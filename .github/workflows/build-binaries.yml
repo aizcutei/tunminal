@@ -1,0 +1,136 @@
+name: Build Standalone Binaries
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+            binary_name: tunminal
+            archive_name: tunminal-linux-x86_64.tar.gz
+            use_zip: false
+          - os: macos-13
+            target: macos-x86_64
+            binary_name: tunminal
+            archive_name: tunminal-macos-x86_64.tar.gz
+            use_zip: false
+          - os: macos-latest
+            target: macos-arm64
+            binary_name: tunminal
+            archive_name: tunminal-macos-arm64.tar.gz
+            use_zip: false
+          - os: windows-latest
+            target: windows-x86_64
+            binary_name: tunminal.exe
+            archive_name: tunminal-windows-x86_64.zip
+            use_zip: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libayatana-appindicator3-dev \
+            gir1.2-appindicator3-0.1 \
+            xclip \
+            wl-clipboard
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install project dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run unit tests
+        run: uv run pytest -v
+
+      - name: Build standalone executable with PyInstaller
+        run: uv run pyinstaller --noconfirm --clean tunminal.spec
+
+      - name: Verify executable runs (--help) [Unix]
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x dist/${{ matrix.binary_name }}
+          ./dist/${{ matrix.binary_name }} --help
+
+      - name: Verify executable runs (--help) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\dist\${{ matrix.binary_name }} --help
+
+      - name: Package release artifact [Unix]
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p package_dir
+          cp dist/${{ matrix.binary_name }} package_dir/${{ matrix.binary_name }}
+          tar -czf ${{ matrix.archive_name }} -C package_dir ${{ matrix.binary_name }}
+          shasum -a 256 ${{ matrix.archive_name }} > ${{ matrix.archive_name }}.sha256
+          cat ${{ matrix.archive_name }}.sha256
+
+      - name: Package release artifact [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package_dir -Force
+          Copy-Item "dist\${{ matrix.binary_name }}" -Destination "package_dir\${{ matrix.binary_name }}"
+          Compress-Archive -Path "package_dir\${{ matrix.binary_name }}" -DestinationPath "${{ matrix.archive_name }}"
+          $hash = (Get-FileHash -Path "${{ matrix.archive_name }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.archive_name }}" | Out-File -FilePath "${{ matrix.archive_name }}.sha256" -Encoding ascii
+          Get-Content "${{ matrix.archive_name }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ matrix.archive_name }}
+            ${{ matrix.archive_name }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Display downloaded assets
+        run: ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

@@ -9,7 +9,8 @@ from tunminal.session import SessionManager
 from tunminal.server import create_app
 
 
-def test_auth_manager():
+def test_auth_manager(tmp_path, monkeypatch):
+    # Test explicit token
     auth = AuthManager("secret123")
     assert auth.is_valid_token("secret123")
     assert not auth.is_valid_token("wrongtoken")
@@ -18,6 +19,20 @@ def test_auth_manager():
     url = auth.make_magic_url("https://example.com/app")
     assert "token=secret123" in url
 
+    # Test persistent token loading across instances
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.delenv("TUNMINAL_TOKEN", raising=False)
+
+    auth1 = AuthManager()
+    token1 = auth1.token
+    assert token1 is not None and len(token1) > 10
+
+    # Second instance should reuse the same saved token
+    auth2 = AuthManager()
+    assert auth2.token == token1
+
 
 def test_cli_tools_detection():
     tools = detect_cli_tools()
@@ -25,6 +40,40 @@ def test_cli_tools_detection():
     assert tools["shell"] is True
     assert "claude" in tools
     assert "codex" in tools
+
+
+def test_tray_module(monkeypatch):
+    from tunminal.tray import (
+        is_tray_available,
+        create_tray_icon_image,
+        copy_to_clipboard,
+        TunminalTrayApp,
+    )
+
+    # 1. Icon generation
+    img = create_tray_icon_image()
+    assert img.size == (64, 64)
+    assert img.mode == "RGBA"
+
+    # 2. Tray app initialization & menu
+    auth = AuthManager("testsecret")
+    mgr = SessionManager()
+    tray_app = TunminalTrayApp(
+        session_manager=mgr,
+        auth_manager=auth,
+        local_url="http://127.0.0.1:8080",
+        remote_url="https://remote.example.com",
+        port=8080,
+    )
+    assert tray_app.get_active_url() == "https://remote.example.com"
+    menu = tray_app.build_menu()
+    assert len(menu.items) >= 5
+
+    # 3. Headless simulation
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    assert not is_tray_available()
 
 
 @pytest.mark.asyncio

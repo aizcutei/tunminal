@@ -9,7 +9,7 @@
   <title>Tunminal</title>
   
   <link rel="stylesheet" href="/static/vendor/xterm.css">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
   <!-- Main Application Shell -->
@@ -25,8 +25,15 @@
       <!-- Tab Bar for Sessions -->
       <nav id="tabs-bar" class="tabs-bar"></nav>
 
+      <!-- View Mode Switcher (Terminal vs GUI) - Only shown for Claude / Codex -->
+      <div class="view-mode-toggle hidden" id="view-mode-toggle">
+        <button type="button" id="btn-mode-terminal" class="mode-btn active" title="Raw Terminal View">💻 Terminal</button>
+        <button type="button" id="btn-mode-gui" class="mode-btn" title="Modern Web GUI View">✨ GUI</button>
+      </div>
+
       <!-- Top Actions -->
       <div class="header-actions">
+        <button id="btn-theme-modal" class="btn-icon" title="Terminal Color Themes">🎨</button>
         <button id="btn-sessions-list" class="btn-icon" title="View Running Terminals">
           <span>📑</span>
           <span id="sessions-badge" class="badge">1</span>
@@ -39,8 +46,62 @@
     <!-- Notification Toast -->
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Terminal Viewport -->
+    <!-- Terminal Viewport (Raw Terminal Mode) -->
     <main id="terminal-container"></main>
+
+    <!-- Modern Web GUI Viewport (Native App Style for Claude / Codex) -->
+    <section id="gui-container" class="gui-container hidden">
+      <!-- Agent Dedicated Top Bar -->
+      <div class="gui-agent-header">
+        <div class="gui-agent-profile">
+          <div id="gui-agent-avatar" class="gui-agent-avatar">⚡</div>
+          <div class="gui-agent-meta">
+            <span id="gui-agent-title" class="gui-agent-name">Claude Code</span>
+            <span id="gui-agent-status" class="gui-agent-status ready">● Ready</span>
+          </div>
+        </div>
+        <div class="gui-agent-actions">
+          <button type="button" id="gui-btn-clear" class="gui-header-btn" title="Clear GUI conversation display">🧹 Clear</button>
+          <button type="button" id="gui-btn-to-term" class="gui-header-btn" title="Switch to Raw Terminal View">💻 Raw Terminal</button>
+        </div>
+      </div>
+
+      <!-- Chat Messages & Welcome Hero Container -->
+      <div id="gui-chat-messages" class="gui-chat-messages">
+        <!-- Messages rendered dynamically -->
+      </div>
+
+      <!-- Interactive Approval Bar (Shown when Claude/Codex prompts [y/n]) -->
+      <div id="gui-approval-bar" class="gui-approval-bar hidden">
+        <div class="approval-info">
+          <span class="approval-icon">⚠️</span>
+          <span id="approval-prompt-text" class="approval-text">Command requires confirmation</span>
+        </div>
+        <div class="approval-actions">
+          <button type="button" id="btn-approve-yes" class="btn-approval btn-approve">✓ Approve (y)</button>
+          <button type="button" id="btn-approve-no" class="btn-approval btn-deny">✕ Deny (n)</button>
+        </div>
+      </div>
+
+      <!-- Bottom Floating Composer -->
+      <div class="gui-bottom-panel">
+        <div class="gui-quick-actions">
+          <button type="button" class="chip-btn" data-chip="/help">/help</button>
+          <button type="button" class="chip-btn" data-chip="/compact">/compact</button>
+          <button type="button" class="chip-btn" data-chip="/cost">/cost</button>
+          <button type="button" class="chip-btn" data-chip="/clear">/clear</button>
+          <button type="button" class="chip-btn chip-action" data-chip="y">y (yes)</button>
+          <button type="button" class="chip-btn chip-action" data-chip="n">n (no)</button>
+        </div>
+        <form id="gui-composer-form" class="gui-composer">
+          <textarea id="gui-prompt-input" rows="1" placeholder="Message agent... (Enter to send, Shift+Enter for new line)" autocomplete="off"></textarea>
+          <div class="gui-composer-controls">
+            <button type="button" id="gui-btn-stop" class="btn-circle btn-stop" title="Interrupt / Cancel (Ctrl+C)">■</button>
+            <button type="submit" id="gui-btn-send" class="btn-circle btn-send" title="Send (Enter)">↑</button>
+          </div>
+        </form>
+      </div>
+    </section>
 
     <!-- Mobile Virtual Keyboard Toolbar -->
     <section id="mobile-keypad" class="mobile-keypad">
@@ -145,6 +206,27 @@
     </div>
   </dialog>
 
+  <!-- Terminal Color Themes Dialog -->
+  <dialog id="theme-modal" class="modal">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <div>
+          <h3>Terminal Color Themes</h3>
+          <p class="modal-subtitle">Select a color theme for the terminal style.</p>
+        </div>
+        <button type="button" id="theme-modal-close" class="btn-icon-plain">✕</button>
+      </div>
+
+      <div id="themes-grid" class="themes-grid">
+        <!-- Dynamically rendered theme cards with swatches -->
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="theme-modal-done" class="btn btn-secondary">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Authentication Dialog (Shown only if token is missing) -->
   <dialog id="auth-modal" class="modal">
     <div class="modal-content">
@@ -162,6 +244,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/themes.js?v=3"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

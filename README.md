@@ -8,6 +8,14 @@ With built-in **Cloudflare Tunnel** support and a **mobile-first virtual keypad*
 
 ## 🌟 Highlights
 
+- 🎭 **Dual-Mode UI (Raw Terminal vs Modern Web GUI)**:
+  - **Switch with 1 Tap**: Seamlessly toggle between `[ 💻 Terminal ]` and `[ ✨ GUI ]` at any moment with zero state loss.
+  - **Modern App GUI**: A chat app interface mimicking official desktop apps (Claude Desktop / Codex Composer) featuring user cards, assistant bubbles, markdown styling, copyable code blocks, and tool execution badges.
+  - **Modern Composer**: Auto-expanding prompt input box, send button, cancel button (`■` / `^C`), and quick command chips (`/help`, `/compact`, `/cost`, `/clear`).
+- 🎨 **Terminal Color Themes**:
+  - Switch color themes on the fly from the `🎨` Theme modal.
+  - Includes 8 themes: **Tunminal Dark**, **Dracula**, **Tokyo Night**, **One Dark**, **Nord**, **Monokai Pro**, **Solarized Dark**, and **GitHub Light**.
+  - Persists your preference across sessions and devices.
 - 📱 **Mobile-First Ergonomics**:
   - **Touch Virtual Keypad**: Dedicated floating/docked keys for `ESC`, `TAB`, `CTRL`, `ALT`, `↑`, `↓`, `←`, `→`, `Enter`, and shortcuts (`^C`, `^D`, `^L`, `/`, `~`, `|`).
   - **Visual Viewport Compensation**: Responsive layout that automatically shrinks and repositions xterm when the soft on-screen keyboard slides up on iOS Safari or Android Chrome.
@@ -24,6 +32,13 @@ With built-in **Cloudflare Tunnel** support and a **mobile-first virtual keypad*
 - 🔒 **Built-in Security**:
   - Mandatory token authentication on all HTTP endpoints and WebSockets.
   - Magic login links with automatic secure cookie persistence for seamless mobile logins.
+- 🔔 **System Tray / Taskbar Integration (Windows, macOS, Linux)**:
+  - **Cross-Platform Status Icon**: Runs in the macOS menu bar, Windows system tray/taskbar notification area, and Linux tray (X11 & Wayland).
+  - **Context Menu**: Instantly inspect status (active session count, bound port, tunnel URL), **Open Web Terminal** in default browser, **Copy Access URL** to clipboard, re-print QR Code, or **Exit Tunminal** cleanly.
+  - **Headless Fallback**: Automatically switches to pure console mode when running in headless servers or via `--no-tray`.
+- 📦 **Single Standalone Executables**:
+  - Precompiled, single-file runnable binaries available for **Windows (x86_64)**, **macOS (Apple Silicon arm64 & Intel x86_64)**, and **Linux (x86_64)**.
+  - Run immediately without needing Python, uv, or node installed.
 - 💻 **True Cross-Platform**:
   - **macOS & Linux**: Native POSIX pseudo-terminals (`os.openpty`, `termios`).
   - **Windows 10/11 / Server**: Windows ConPTY support via `pywinpty`.
@@ -149,17 +164,31 @@ Once installed, running `uv run tunminal` will automatically initialize a secure
 
 ```
 usage: tunminal [-h] [--host HOST] [--port PORT] [--token TOKEN] [--cmd CMD]
-                [--cwd CWD] [--tunnel | --no-tunnel]
+                [--cwd CWD] [--tunnel | --no-tunnel] [--tray | --no-tray]
 
 options:
   -h, --help            show this help message and exit
   --host HOST           Host to bind the server on (default: 127.0.0.1)
   --port PORT           Port to bind the server on (default: 8080)
-  --token TOKEN         Authentication token (auto-generated if omitted)
+  --token TOKEN         Authentication token (auto-generated or loaded from ~/.tunminal/token)
   --cmd CMD             Initial command to run (e.g. 'claude', 'codex', or shell)
   --cwd CWD             Working directory for sessions (default: current directory)
   --tunnel, --no-tunnel Enable/disable Cloudflare Tunnel (default: enabled)
+  --tray, --no-tray     Enable/disable system tray / taskbar icon (default: enabled when GUI is available)
 ```
+
+---
+
+## 📦 Standalone Binary Compilation
+
+To build a standalone binary locally without relying on Python runtime:
+
+```bash
+uv run pyinstaller --noconfirm --clean tunminal.spec
+```
+
+The output single executable will be located in `dist/tunminal` (or `dist/tunminal.exe` on Windows).
+Standalone executables for Linux, Windows, macOS ARM64, and macOS Intel are automatically built and published by the **GitHub Actions CI** on every release.
 
 ---
 

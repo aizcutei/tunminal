@@ -2,6 +2,7 @@ import hmac
 import io
 import os
 import secrets
+from pathlib import Path
 from typing import Optional
 from fastapi import HTTPException, Request, WebSocket, status
 import qrcode
@@ -18,7 +19,30 @@ class AuthManager:
             if env_token:
                 self.token = env_token.strip()
             else:
-                self.token = secrets.token_urlsafe(18)
+                self.token = self._load_or_create_token()
+
+    @staticmethod
+    def _load_or_create_token() -> str:
+        """Load persistent token from ~/.tunminal/token or generate and save a new one."""
+        token_dir = Path.home() / ".tunminal"
+        token_file = token_dir / "token"
+        try:
+            if token_file.exists():
+                saved = token_file.read_text(encoding="utf-8").strip()
+                if saved:
+                    return saved
+        except Exception:
+            pass
+
+        # Generate new token and save securely
+        new_token = secrets.token_urlsafe(18)
+        try:
+            token_dir.mkdir(parents=True, exist_ok=True)
+            token_file.write_text(new_token, encoding="utf-8")
+            token_file.chmod(0o600)
+        except Exception:
+            pass
+        return new_token
 
     def is_valid_token(self, candidate: Optional[str]) -> bool:
         if not candidate or not self.token:

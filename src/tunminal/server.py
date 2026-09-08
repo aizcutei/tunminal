@@ -16,7 +16,22 @@ from tunminal.session import SessionManager
 
 logger = logging.getLogger("tunminal.server")
 
-STATIC_DIR = Path(__file__).parent / "static"
+def _resolve_static_dir() -> Path:
+    # Check if running in a PyInstaller bundle
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        meipass_pkg = Path(sys._MEIPASS) / "tunminal" / "static"
+        if meipass_pkg.exists():
+            return meipass_pkg
+        meipass_root = Path(sys._MEIPASS) / "static"
+        if meipass_root.exists():
+            return meipass_root
+
+    # Standard source checkout / package installation
+    src_static = Path(__file__).parent / "static"
+    return src_static
+
+
+STATIC_DIR = _resolve_static_dir()
 
 
 class CreateSessionRequest(BaseModel):

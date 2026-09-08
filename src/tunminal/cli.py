@@ -9,6 +9,7 @@ from tunminal.pty import detect_cli_tools, get_default_shell
 from tunminal.security import AuthManager
 from tunminal.server import create_app
 from tunminal.session import SessionManager
+from tunminal.tray import TunminalTrayApp, is_tray_available
 from tunminal.tunnel import CloudflareTunnel, get_install_instructions
 
 BANNER = r"""
@@ -39,7 +40,7 @@ def main():
     parser.add_argument(
         "--token",
         default=None,
-        help="Authentication token (auto-generated if omitted)",
+        help="Authentication token (auto-generated or loaded from ~/.tunminal/token)",
     )
     parser.add_argument(
         "--cmd",
@@ -56,6 +57,12 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Enable/disable Cloudflare Tunnel (default: enabled)",
+    )
+    parser.add_argument(
+        "--tray",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable/disable system tray / taskbar icon (default: enabled when GUI display is available)",
     )
 
     args = parser.parse_args()
@@ -119,18 +126,45 @@ def main():
     # Cleanup hook
     def cleanup():
         if tunnel:
-            tunnel.stop()
+            try:
+                tunnel.stop()
+            except Exception:
+                pass
         session_mgr.close_all()
 
     atexit.register(cleanup)
 
-    # 6. Run Server
-    try:
-        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
-    except KeyboardInterrupt:
-        print("\n[*] Shutting down Tunminal...")
-    finally:
-        cleanup()
+    # 6. Run Server (with Taskbar Tray if available and enabled)
+    should_run_tray = args.tray and is_tray_available()
+    server_config = uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")
+    server = uvicorn.Server(server_config)
+
+    if should_run_tray:
+        tray_app = TunminalTrayApp(
+            session_manager=session_mgr,
+            auth_manager=auth,
+            local_url=local_url,
+            remote_url=remote_url,
+            port=args.port,
+            on_exit=cleanup,
+        )
+        try:
+            tray_app.run(server=server)
+        except KeyboardInterrupt:
+            print("\n[*] Shutting down Tunminal...")
+        finally:
+            cleanup()
+    else:
+        if not args.tray:
+            print("\033[1;33m[*] Taskbar tray disabled via --no-tray.\033[0m\n")
+        else:
+            print("\033[1;33m[*] Running in console-only mode (headless environment).\033[0m\n")
+        try:
+            server.run()
+        except KeyboardInterrupt:
+            print("\n[*] Shutting down Tunminal...")
+        finally:
+            cleanup()
 
 
 if __name__ == "__main__":
