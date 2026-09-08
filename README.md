@@ -37,7 +37,7 @@ With built-in **Cloudflare Tunnel** support and a **mobile-first virtual keypad*
   - **Context Menu**: Instantly inspect status (active session count, bound port, tunnel URL), **Open Web Terminal** in default browser, **Copy Access URL** to clipboard, re-print QR Code, or **Exit Tunminal** cleanly.
   - **Headless Fallback**: Automatically switches to pure console mode when running in headless servers or via `--no-tray`.
 - 📦 **Single Standalone Executables**:
-  - Precompiled, single-file runnable binaries available for **Windows (x86_64)**, **macOS (Apple Silicon arm64 & Intel x86_64)**, and **Linux (x86_64)**.
+  - Precompiled, single-file runnable binaries available for **Windows (x86_64)**, **macOS (Apple Silicon arm64)**, and **Linux (x86_64)**.
   - Run immediately without needing Python, uv, or node installed.
 - 💻 **True Cross-Platform**:
   - **macOS & Linux**: Native POSIX pseudo-terminals (`os.openpty`, `termios`).
@@ -188,7 +188,7 @@ uv run pyinstaller --noconfirm --clean tunminal.spec
 ```
 
 The output single executable will be located in `dist/tunminal` (or `dist/tunminal.exe` on Windows).
-Standalone executables for Linux, Windows, macOS ARM64, and macOS Intel are automatically built and published by the **GitHub Actions CI** on every release.
+Standalone executables for Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon arm64) are automatically built and published by the **GitHub Actions CI** on every release.
 
 ---
 

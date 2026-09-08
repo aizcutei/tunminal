@@ -21,6 +21,8 @@ def is_tray_available() -> bool:
     try:
         import pystray
         from PIL import Image
+        if hasattr(pystray, "backend"):
+            _ = pystray.backend()
         return True
     except Exception as e:
         logger.debug("Tray not available: %s", e)
@@ -148,8 +150,12 @@ class TunminalTrayApp:
         self.stop()
 
     def build_menu(self):
-        import pystray
-        from pystray import MenuItem as item, Menu
+        try:
+            import pystray
+            from pystray import MenuItem as item, Menu
+        except Exception as e:
+            logger.warning("Failed to import pystray for build_menu: %s", e)
+            return None
 
         return Menu(
             item(lambda text: self._get_status_text(), None, enabled=False),

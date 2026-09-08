@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -35,7 +35,7 @@ STATIC_DIR = _resolve_static_dir()
 
 
 class CreateSessionRequest(BaseModel):
-    command: Optional[str] = None
+    command: Optional[Union[str, List[str]]] = None
     name: Optional[str] = None
     cwd: Optional[str] = None
     cols: int = 80

@@ -24,11 +24,6 @@ jobs:
             binary_name: tunminal
             archive_name: tunminal-linux-x86_64.tar.gz
             use_zip: false
-          - os: macos-13
-            target: macos-x86_64
-            binary_name: tunminal
-            archive_name: tunminal-macos-x86_64.tar.gz
-            use_zip: false
           - os: macos-latest
             target: macos-arm64
             binary_name: tunminal
@@ -51,6 +46,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libayatana-appindicator3-dev \
             gir1.2-appindicator3-0.1 \
+            xvfb \
             xclip \
             wl-clipboard
 
@@ -65,7 +61,12 @@ jobs:
       - name: Install project dependencies
         run: uv sync --all-extras --dev
 
-      - name: Run unit tests
+      - name: Run unit tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a uv run pytest -v
+
+      - name: Run unit tests (Non-Linux)
+        if: runner.os != 'Linux'
         run: uv run pytest -v
 
       - name: Build standalone executable with PyInstaller

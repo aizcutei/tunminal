@@ -1,4 +1,5 @@
 import os
+import shlex
 import shutil
 import sys
 from typing import List, Optional, Union
@@ -35,12 +36,17 @@ def spawn_pty(
     if command is None or command == "":
         command = [get_default_shell()]
     elif isinstance(command, str):
-        # Check if single word command exists or needs shell parsing
-        parts = command.strip().split()
-        if len(parts) == 1 and shutil.which(parts[0]):
-            command = [shutil.which(parts[0])]
-        elif len(parts) > 1 and shutil.which(parts[0]):
-            command = [shutil.which(parts[0])] + parts[1:]
+        # Parse command string handling quotes safely
+        try:
+            parts = shlex.split(command, posix=(sys.platform != "win32"))
+        except ValueError:
+            parts = command.strip().split()
+        if parts:
+            exe = shutil.which(parts[0])
+            if exe:
+                command = [exe] + parts[1:]
+            else:
+                command = parts
 
     if sys.platform == "win32":
         from tunminal.pty.windows import WindowsPty
