@@ -37,9 +37,11 @@ class WindowsPty(BasePty):
         self._eof = False
 
         if isinstance(command, list):
-            cmd_str = subprocess_list_to_cmd(command)
+            cmd_args = list(command)
+        elif isinstance(command, str):
+            cmd_args = command
         else:
-            cmd_str = command
+            cmd_args = ["powershell.exe"]
 
         proc_env = os.environ.copy()
         if env:
@@ -47,7 +49,7 @@ class WindowsPty(BasePty):
         proc_env.setdefault("TERM", "xterm-256color")
 
         self._proc = PtyProcess.spawn(
-            cmd_str,
+            cmd_args,
             cwd=cwd,
             env=proc_env,
             dimensions=(self._rows, self._cols),
@@ -74,6 +76,9 @@ class WindowsPty(BasePty):
             return
         try:
             text = data.decode("utf-8", errors="replace")
+            # Ensure line endings include carriage return for Windows console input
+            if "\n" in text and "\r" not in text:
+                text = text.replace("\n", "\r\n")
             self._proc.write(text)
         except Exception:
             pass

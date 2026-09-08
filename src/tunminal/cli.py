@@ -1,5 +1,6 @@
 import argparse
 import atexit
+import logging
 import os
 import signal
 import sys
@@ -12,6 +13,44 @@ from tunminal.session import SessionManager
 from tunminal.tray import TunminalTrayApp, is_tray_available
 from tunminal.tunnel import CloudflareTunnel, get_install_instructions
 
+
+class InvalidHttpRequestFilter(logging.Filter):
+    """Provide a friendly hint when TLS/HTTPS handshake is sent to plain HTTP port."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "Invalid HTTP request received" in msg:
+            record.msg = "Invalid HTTP request received (Tip: Local access uses http://, not https://)"
+        return True
+
+
+def patch_windows_asyncio_connection_reset():
+    """Silence harmless Windows asyncio WinError 10054 on remote connection reset."""
+    if sys.platform != "win32":
+        return
+
+    try:
+        from asyncio.proactor_events import _ProactorBasePipeTransport
+        orig_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+
+        def _safe_call_connection_lost(self, exc):
+            try:
+                orig_call_connection_lost(self, exc)
+            except (ConnectionResetError, ConnectionAbortedError, OSError):
+                # Remote client closed or reset connection abruptly before socket shutdown
+                if getattr(self, "_sock", None) is not None:
+                    try:
+                        self._sock.close()
+                    except Exception:
+                        pass
+                    self._sock = None
+                self._called_connection_lost = True
+
+        _ProactorBasePipeTransport._call_connection_lost = _safe_call_connection_lost
+    except Exception:
+        pass
+
+
 BANNER = r"""
   _____                  _             _ 
  |_   _|   _ _ __  _ __ (_)_ __   __ _| |
@@ -23,6 +62,9 @@ BANNER = r"""
 
 
 def main():
+    patch_windows_asyncio_connection_reset()
+    logging.getLogger("uvicorn.error").addFilter(InvalidHttpRequestFilter())
+
     parser = argparse.ArgumentParser(
         description="Tunminal: Cross-platform web terminal server for remote mobile access to Claude Code, Codex, and local shells."
     )
@@ -107,9 +149,9 @@ def main():
 
     # 5. Display Access URLs & QR Codes
     print("-" * 56)
-    print(f"  Local Access:      \033[1;32m{local_url}\033[0m")
+    print(f"  Local Access (HTTP):     \033[1;32m{local_url}\033[0m")
     if remote_url:
-        print(f"  Remote (Tunnel):   \033[1;36m{remote_url}\033[0m")
+        print(f"  Remote (Tunnel HTTPS):   \033[1;36m{remote_url}\033[0m")
         auth.print_qr_code(remote_url, label="Scan with Phone Camera for Remote Access:")
     else:
         auth.print_qr_code(local_url, label="Scan with Phone Camera for Local Network Access:")

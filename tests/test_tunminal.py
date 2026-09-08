@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import sys
 import pytest
 from starlette.testclient import TestClient
@@ -7,6 +8,16 @@ from tunminal.pty import spawn_pty, get_default_shell, detect_cli_tools
 from tunminal.security import AuthManager
 from tunminal.session import SessionManager
 from tunminal.server import create_app
+
+
+def receive_with_timeout(ws, timeout=3.0):
+    """Safely receive from websocket with timeout to prevent test hanging."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(ws.receive)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            return None
 
 
 def test_auth_manager(tmp_path, monkeypatch):
@@ -162,10 +173,12 @@ def test_server_routes():
     # 6. Session reconnect / pick-up test:
     # First connection (browser 1)
     with client.websocket_connect(f"/ws/{session_id}?token=testtoken") as ws1:
-        ws1.send_text("persisted_terminal_data\n")
+        ws1.send_text("persisted_terminal_data\r\n")
         received = b""
         for _ in range(30):
-            msg = ws1.receive()
+            msg = receive_with_timeout(ws1, timeout=1.5)
+            if not msg:
+                break
             if "bytes" in msg and msg["bytes"]:
                 received += msg["bytes"]
                 if b"persisted_terminal_data" in received:
@@ -182,7 +195,9 @@ def test_server_routes():
     with client.websocket_connect(f"/ws/{session_id}?token=testtoken") as ws2:
         received2 = b""
         for _ in range(30):
-            msg = ws2.receive()
+            msg = receive_with_timeout(ws2, timeout=1.5)
+            if not msg:
+                break
             if "bytes" in msg and msg["bytes"]:
                 received2 += msg["bytes"]
                 if b"persisted_terminal_data" in received2:
@@ -204,7 +219,9 @@ def test_server_routes():
         ws.send_text('{"type": "ping"}')
         found_pong = False
         for _ in range(30):
-            msg = ws.receive()
+            msg = receive_with_timeout(ws, timeout=1.5)
+            if not msg:
+                break
             if "text" in msg and msg["text"] and "pong" in msg["text"]:
                 found_pong = True
                 break
