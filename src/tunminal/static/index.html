@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#12141a">
+  <title>Tunminal</title>
+  
+  <link rel="stylesheet" href="/static/vendor/xterm.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Main Application Shell -->
+  <div id="app">
+    <!-- Top Header -->
+    <header id="header">
+      <div class="brand">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">Tunminal</span>
+        <span id="connection-status" class="status-badge connecting" title="Connecting..."></span>
+      </div>
+
+      <!-- Tab Bar for Sessions -->
+      <nav id="tabs-bar" class="tabs-bar"></nav>
+
+      <!-- Top Actions -->
+      <div class="header-actions">
+        <button id="btn-sessions-list" class="btn-icon" title="View Running Terminals">
+          <span>📑</span>
+          <span id="sessions-badge" class="badge">1</span>
+        </button>
+        <button id="btn-new-tab" class="btn-icon" title="New Session">+</button>
+        <button id="btn-toggle-keypad" class="btn-icon" title="Toggle Mobile Keypad">⌨️</button>
+      </div>
+    </header>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Terminal Viewport -->
+    <main id="terminal-container"></main>
+
+    <!-- Mobile Virtual Keyboard Toolbar -->
+    <section id="mobile-keypad" class="mobile-keypad">
+      <!-- Navigation & Common Keys -->
+      <div class="keypad-row">
+        <button class="key-btn" data-key="Escape">ESC</button>
+        <button class="key-btn" data-key="Tab">TAB</button>
+        <button id="mod-ctrl" class="key-btn mod-key">CTRL</button>
+        <button id="mod-alt" class="key-btn mod-key">ALT</button>
+        <button class="key-btn nav-arrow" data-key="ArrowUp">▲</button>
+        <button class="key-btn nav-arrow" data-key="ArrowDown">▼</button>
+        <button class="key-btn nav-arrow" data-key="ArrowLeft">◀</button>
+        <button class="key-btn nav-arrow" data-key="ArrowRight">▶</button>
+        <button class="key-btn enter-key" data-key="Enter">↵</button>
+      </div>
+
+      <!-- AI Agent Shortcuts & Tools -->
+      <div class="keypad-row secondary-row">
+        <button class="key-btn shortcut-btn" data-shortcut="ctrl-c">^C</button>
+        <button class="key-btn shortcut-btn" data-shortcut="ctrl-d">^D</button>
+        <button class="key-btn shortcut-btn" data-shortcut="ctrl-l">^L</button>
+        <button class="key-btn shortcut-btn" data-send="/">/</button>
+        <button class="key-btn shortcut-btn" data-send="~">~</button>
+        <button class="key-btn shortcut-btn" data-send="-">-</button>
+        <button class="key-btn shortcut-btn" data-send="|">|</button>
+        <button id="btn-input-modal" class="key-btn text-mode-btn" title="Type text with mobile IME">💬 Text</button>
+        <button id="btn-paste" class="key-btn" title="Paste clipboard">📋</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- New Session Dialog -->
+  <dialog id="new-session-modal" class="modal">
+    <div class="modal-content">
+      <h3>Start New Session</h3>
+      <div class="preset-buttons">
+        <button id="preset-claude" class="btn preset-btn">
+          <strong>Claude Code</strong>
+          <span>claude</span>
+        </button>
+        <button id="preset-codex" class="btn preset-btn">
+          <strong>Codex</strong>
+          <span>codex</span>
+        </button>
+        <button id="preset-shell" class="btn preset-btn">
+          <strong>Default Shell</strong>
+          <span>bash / zsh / pwsh</span>
+        </button>
+      </div>
+      <form id="custom-session-form">
+        <div class="form-group">
+          <label for="custom-cmd">Custom Command (optional):</label>
+          <input type="text" id="custom-cmd" placeholder="e.g. htop, python, git status">
+        </div>
+        <div class="form-group">
+          <label for="custom-name">Session Name (optional):</label>
+          <input type="text" id="custom-name" placeholder="e.g. Worker 1">
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Start</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Running Terminals & Background Sessions Manager Dialog -->
+  <dialog id="sessions-modal" class="modal">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <div>
+          <h3>Running Terminals</h3>
+          <p class="modal-subtitle">Terminals run in the background even if you close your browser. Pick any terminal to resume.</p>
+        </div>
+        <button type="button" id="sessions-modal-close" class="btn-icon-plain">✕</button>
+      </div>
+
+      <div id="sessions-list-container" class="sessions-list">
+        <!-- Dynamically rendered session cards -->
+      </div>
+
+      <div class="modal-actions space-between">
+        <button type="button" id="modal-open-new-btn" class="btn btn-primary">+ New Terminal</button>
+        <button type="button" id="sessions-modal-done" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Mobile Text Input Dialog (Ideal for Mobile Dictation / Complex Sentences) -->
+  <dialog id="text-input-modal" class="modal">
+    <div class="modal-content">
+      <h3>Send Text to Terminal</h3>
+      <form id="text-input-form">
+        <div class="form-group">
+          <textarea id="mobile-text-content" rows="4" placeholder="Type or dictate command / prompt here..."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="text-modal-cancel" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Send ↵</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Authentication Dialog (Shown only if token is missing) -->
+  <dialog id="auth-modal" class="modal">
+    <div class="modal-content">
+      <h3>Authentication Required</h3>
+      <p>Enter the Tunminal access token displayed on your computer's terminal:</p>
+      <form id="auth-form">
+        <div class="form-group">
+          <input type="password" id="auth-token-input" placeholder="Access Token" required autocomplete="off">
+        </div>
+        <button type="submit" class="btn btn-primary full-width">Connect</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Scripts -->
+  <script src="/static/vendor/xterm.js"></script>
+  <script src="/static/vendor/xterm-addon-fit.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
