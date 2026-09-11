@@ -37,11 +37,11 @@ class WindowsPty(BasePty):
         self._eof = False
 
         if isinstance(command, list):
-            cmd_args = subprocess_list_to_cmd(command)
+            cmd_args = list(command)
         elif isinstance(command, str):
-            cmd_args = command
+            cmd_args = [command]
         else:
-            cmd_args = "powershell.exe"
+            cmd_args = ["powershell.exe"]
 
         proc_env = os.environ.copy()
         if env:
