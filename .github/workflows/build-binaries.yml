@@ -86,6 +86,13 @@ jobs:
             exit 1
           }
 
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-${{ matrix.target }}
+          path: test_log.txt
+
       - name: Build standalone executable with PyInstaller
         run: uv run pyinstaller --noconfirm --clean tunminal.spec
 

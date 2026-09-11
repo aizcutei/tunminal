@@ -151,7 +151,7 @@ def test_server_routes():
         sys.executable,
         "-u",
         "-c",
-        "import sys\nwhile True:\n    line = sys.stdin.readline()\n    if not line: break\n    sys.stdout.write(line)\n    sys.stdout.flush()\n",
+        "import sys; [(sys.stdout.write(x), sys.stdout.flush()) for x in iter(sys.stdin.readline, '')]",
     ]
     res = client.post(
         "/api/sessions",
