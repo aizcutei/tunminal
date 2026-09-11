@@ -113,17 +113,17 @@ async def test_pty_echo():
 async def test_session_manager_lifecycle():
     mgr = SessionManager()
     # Cross-platform command working on Windows, Linux, and macOS
-    cmd = [sys.executable, "-u", "-c", "import sys; sys.stdout.write('session_output\\n'); sys.stdout.flush()"]
+    cmd = [sys.executable, "-u", "-c", "print('session_output', flush=True)"]
     session = mgr.create_session(name="TestSession", command=cmd)
     assert session.session_id in [s["id"] for s in mgr.list_sessions()]
 
     # Wait for output to complete and buffer to populate
-    for _ in range(30):
+    for _ in range(50):
         if b"session_output" in session._buffer:
             break
         await asyncio.sleep(0.1)
 
-    assert b"session_output" in session._buffer
+    assert b"session_output" in session._buffer, f"Buffer content: {session._buffer!r}"
 
     mgr.close_session(session.session_id)
     assert len(mgr.list_sessions()) == 0
@@ -181,33 +181,29 @@ def test_server_routes():
         ws1.send_text("persisted_terminal_data\r\n")
         received = b""
         for _ in range(30):
-            msg = receive_with_timeout(ws1, timeout=1.5)
-            if not msg:
-                break
-            if "bytes" in msg and msg["bytes"]:
+            msg = receive_with_timeout(ws1, timeout=0.5)
+            if msg and "bytes" in msg and msg["bytes"]:
                 received += msg["bytes"]
                 if b"persisted_terminal_data" in received:
                     break
-        assert b"persisted_terminal_data" in received
+        assert b"persisted_terminal_data" in received, f"Expected echoed data, got: {received!r}"
 
     # Browser 1 is now closed (ws1 exited context). The session is still alive in mgr!
     session = mgr.get_session(session_id)
     assert session is not None
     assert session.is_alive()
-    assert b"persisted_terminal_data" in session._buffer
+    assert b"persisted_terminal_data" in session._buffer, f"Session buffer: {session._buffer!r}"
 
     # Second connection (browser 2 reopening) - picks up old still running terminal!
     with client.websocket_connect(f"/ws/{session_id}?token=testtoken") as ws2:
         received2 = b""
         for _ in range(30):
-            msg = receive_with_timeout(ws2, timeout=1.5)
-            if not msg:
-                break
-            if "bytes" in msg and msg["bytes"]:
+            msg = receive_with_timeout(ws2, timeout=0.5)
+            if msg and "bytes" in msg and msg["bytes"]:
                 received2 += msg["bytes"]
                 if b"persisted_terminal_data" in received2:
                     break
-        assert b"persisted_terminal_data" in received2
+        assert b"persisted_terminal_data" in received2, f"Expected replayed data, got: {received2!r}"
 
     # 7. Delete session
     res = client.delete(f"/api/sessions/{session_id}", headers={"Authorization": "Bearer testtoken"})
@@ -224,12 +220,10 @@ def test_server_routes():
         ws.send_text('{"type": "ping"}')
         found_pong = False
         for _ in range(30):
-            msg = receive_with_timeout(ws, timeout=1.5)
-            if not msg:
-                break
-            if "text" in msg and msg["text"] and "pong" in msg["text"]:
+            msg = receive_with_timeout(ws, timeout=0.5)
+            if msg and "text" in msg and msg["text"] and "pong" in msg["text"]:
                 found_pong = True
                 break
-        assert found_pong
+        assert found_pong, "Expected pong response from websocket"
 
     mgr.close_all()

@@ -107,7 +107,7 @@ class UnixPty(BasePty):
         while not self._closed:
             if self._chunks:
                 return self._chunks.popleft()
-            if self._eof or not self.is_alive():
+            if self._eof:
                 if self._chunks:
                     return self._chunks.popleft()
                 return b""

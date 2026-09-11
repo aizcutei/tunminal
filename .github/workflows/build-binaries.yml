@@ -64,34 +64,41 @@ jobs:
 
       - name: Run unit tests (Linux)
         if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          xvfb-run -a uv run pytest -v -s --tb=short 2>&1 | tee test_log.txt || {
-            echo "### Pytest Failure Details (Linux)" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat test_log.txt >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          }
+        run: xvfb-run -a uv run pytest -v --tb=short --junitxml=test_results.xml
 
-      - name: Run unit tests (Non-Linux)
-        if: runner.os != 'Linux'
-        shell: bash
+      - name: Run unit tests (macOS)
+        if: runner.os == 'macOS'
+        run: uv run pytest -v --tb=short --junitxml=test_results.xml
+
+      - name: Run unit tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: uv run pytest -v --tb=short --junitxml=test_results.xml
+
+      - name: Report failure annotations
+        if: failure()
         run: |
-          uv run pytest -v -s --tb=short 2>&1 | tee test_log.txt || {
-            echo "### Pytest Failure Details (${{ matrix.target }})" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat test_log.txt >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          }
+          uv run python -c "
+          import xml.etree.ElementTree as ET, os
+          if os.path.exists('test_results.xml'):
+              try:
+                  tree = ET.parse('test_results.xml')
+                  for tc in tree.iter('testcase'):
+                      for f in tc.iter('failure'):
+                          name = tc.attrib.get('name', 'test')
+                          msg = f.attrib.get('message', '')
+                          text = (f.text or '').strip()
+                          print(f'::error title={name} failed::{msg} | {text[:500]}')
+              except Exception as e:
+                  print(f'::error::Failed to parse test XML: {e}')
+          "
 
       - name: Upload test log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-log-${{ matrix.target }}
-          path: test_log.txt
+          name: test-results-${{ matrix.target }}
+          path: test_results.xml
 
       - name: Build standalone executable with PyInstaller
         run: uv run pyinstaller --noconfirm --clean tunminal.spec
