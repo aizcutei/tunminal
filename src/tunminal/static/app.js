@@ -13,6 +13,7 @@
   let toastTimer = null;
   let activeSessions = [];
   let streamIdleTimer = null;
+  const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
 
   // View Mode & Theme State
   let currentViewMode = localStorage.getItem("tunminal_view_mode") || "terminal";
@@ -562,13 +563,15 @@
       termContainer.classList.add("hidden");
       mobileKeypad.classList.add("hidden");
       guiContainer.classList.remove("hidden");
-      if (guiParser.messages.length === 0) {
+      if (guiParser.messages.length === 0 && !guiParser.currentAssistantContent) {
         guiParser.renderWelcomeOrMessages();
+      } else if (guiParser.currentAssistantContent && !guiParser.currentAssistantCard) {
+        guiParser.updateAssistantCard(true);
       }
       if (guiPromptInput) {
         guiPromptInput.focus();
       }
-      scrollGuiToBottom();
+      scrollGuiToBottom(true);
       if (showNotice) showToast("Switched to Modern Web GUI mode");
     }
   }
@@ -615,11 +618,11 @@
     guiParser.addUserMessage(text);
   }
 
-  // 5. True Full GUI Stream Parser & Cleaner
-  const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+  // 5. High-Performance Full GUI Stream Parser & Cleaner
+  const ANSI_REGEX = /(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1b]*(\x07|\x1B\\))/g;
 
   function stripAnsi(str) {
-    return str.replace(ANSI_REGEX, "");
+    return str ? str.replace(ANSI_REGEX, "") : "";
   }
 
   function setAgentWorkingState(working) {
@@ -668,11 +671,29 @@
   const guiParser = {
     messages: [],
     currentAssistantCard: null,
+    currentBodyEl: null,
     currentAssistantContent: "",
 
+    // Streaming batching & frame throttling
+    pendingChunk: "",
+    renderRafId: null,
+    lastRenderTime: 0,
+    renderIntervalMs: 50, // Throttle to ~20 FPS max for DOM rendering
+
     reset() {
+      if (this.renderRafId) {
+        cancelAnimationFrame(this.renderRafId);
+        clearTimeout(this.renderRafId);
+        this.renderRafId = null;
+      }
+      if (streamIdleTimer) {
+        clearTimeout(streamIdleTimer);
+        streamIdleTimer = null;
+      }
+      this.pendingChunk = "";
       this.messages = [];
       this.currentAssistantCard = null;
+      this.currentBodyEl = null;
       this.currentAssistantContent = "";
       hideApprovalBar();
       setAgentWorkingState(false);
@@ -745,7 +766,10 @@
     },
 
     addUserMessage(text) {
+      // Flush any pending stream buffer and finalize prior assistant response
+      this.flushPending(true);
       this.finalizeAssistantMessage();
+
       const hero = guiChatMessages.querySelector(".gui-welcome-hero");
       if (hero) hero.remove();
 
@@ -757,7 +781,7 @@
       };
       this.messages.push(msg);
       this.renderUserCard(msg);
-      scrollGuiToBottom();
+      scrollGuiToBottom(true);
       setAgentWorkingState(true);
     },
 
@@ -767,7 +791,7 @@
 
       checkInteractiveApproval(clean);
 
-      // Process lines handling carriage return (\r) overwrites
+      // Process lines handling carriage return (\r) overwrites & transient spinners
       const rawLines = clean.split("\n");
       let meaningfulContent = "";
 
@@ -776,49 +800,97 @@
 
         // \r carriage return handling: keep only the latest rewrite segment
         if (line.includes("\r")) {
-          const parts = line.split("\r");
-          line = parts[parts.length - 1];
+          const parts = line.split("\r").filter((p) => p.length > 0);
+          line = parts.length > 0 ? parts[parts.length - 1] : "";
         }
 
-        // Detect spinner frame: e.g. ⠋ Thinking... or ⠙ Running...
-        const spinnerMatch = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]\s*(.*)/.exec(line);
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        // Detect CLI spinner frames with optional indentation: e.g. ⠋ Thinking..., ◐ Working...
+        const spinnerMatch = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒◜◝◞◟]\s*(.*)/.exec(trimmed);
         if (spinnerMatch) {
           const statusText = spinnerMatch[1] ? spinnerMatch[1].trim() : "Working...";
           setAgentStatusText(`● ${statusText}`, true);
+          continue; // Do NOT append transient spinner frame into permanent chat text
+        }
+
+        // Detect transient thinking / progress timer updates: e.g. "● Thinking... (2s)" or "● Running command..."
+        if (/^●\s*(Thinking|Working|Running|Waiting|Searching|Generating).*\(\d+(\.\d+)?s\)/i.test(trimmed)) {
+          setAgentStatusText(trimmed, true);
           continue;
         }
 
         // Filter decorative box drawing frames
-        if (/^[╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝─\s]+$/.test(line) && line.length > 2) {
+        if (/^[╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝─\s]+$/.test(trimmed) && trimmed.length > 2) {
           continue;
         }
 
         // Filter raw prompt redraw lines: ? What would you like to do? ›
-        if (/^\?\s+.*\s*›\s*$/.test(line.trim())) {
+        if (/^\?\s+.*\s*›\s*$/.test(trimmed)) {
           continue;
         }
 
-        if (line.trim()) {
-          meaningfulContent += line + "\n";
-        }
+        meaningfulContent += line + "\n";
       }
 
       if (meaningfulContent) {
         const hero = guiChatMessages.querySelector(".gui-welcome-hero");
         if (hero) hero.remove();
 
-        this.currentAssistantContent += meaningfulContent;
+        this.pendingChunk += meaningfulContent;
         setAgentWorkingState(true);
-        this.updateAssistantCard();
+
+        // If in Terminal mode, don't trigger DOM re-renders; accumulate quietly
+        if (currentViewMode === "gui") {
+          this.scheduleRender();
+        }
       }
 
+      // If output goes idle for 1.8s, agent turn has completed -> seal card into static DOM
       if (streamIdleTimer) clearTimeout(streamIdleTimer);
       streamIdleTimer = setTimeout(() => {
+        this.flushPending(false);
+        this.finalizeAssistantMessage();
         setAgentWorkingState(false);
-      }, 1000);
+      }, 1800);
     },
 
-    updateAssistantCard() {
+    scheduleRender() {
+      if (this.renderRafId) return;
+
+      const now = performance.now();
+      const elapsed = now - this.lastRenderTime;
+
+      if (elapsed >= this.renderIntervalMs) {
+        this.renderRafId = requestAnimationFrame(() => {
+          this.renderRafId = null;
+          this.lastRenderTime = performance.now();
+          this.flushPending(false);
+        });
+      } else {
+        const delay = this.renderIntervalMs - elapsed;
+        this.renderRafId = setTimeout(() => {
+          this.renderRafId = null;
+          this.lastRenderTime = performance.now();
+          this.flushPending(false);
+        }, delay);
+      }
+    },
+
+    flushPending(forceScroll = false) {
+      if (!this.pendingChunk) {
+        if (forceScroll) scrollGuiToBottom(true);
+        return;
+      }
+      this.currentAssistantContent += this.pendingChunk;
+      this.pendingChunk = "";
+      if (currentViewMode === "gui") {
+        this.updateAssistantCard(forceScroll);
+      }
+    },
+
+    updateAssistantCard(forceScroll = false) {
       if (!this.currentAssistantCard) {
         const session = getActiveSession();
         const isCodex = session && (session.name || session.command || "").toLowerCase().includes("codex");
@@ -838,17 +910,29 @@
         `;
         guiChatMessages.appendChild(card);
         this.currentAssistantCard = card;
+        this.currentBodyEl = card.querySelector(".msg-body");
       }
 
-      const bodyEl = this.currentAssistantCard.querySelector(".msg-body");
-      if (bodyEl) {
-        bodyEl.innerHTML = renderFormattedMarkdown(this.currentAssistantContent);
-        setupCopyButtons(bodyEl);
+      if (this.currentBodyEl) {
+        this.currentBodyEl.innerHTML = renderFormattedMarkdown(this.currentAssistantContent);
       }
-      scrollGuiToBottom();
+      scrollGuiToBottom(forceScroll);
     },
 
     finalizeAssistantMessage() {
+      if (this.renderRafId) {
+        cancelAnimationFrame(this.renderRafId);
+        clearTimeout(this.renderRafId);
+        this.renderRafId = null;
+      }
+      if (this.pendingChunk) {
+        this.currentAssistantContent += this.pendingChunk;
+        this.pendingChunk = "";
+        if (this.currentBodyEl) {
+          this.currentBodyEl.innerHTML = renderFormattedMarkdown(this.currentAssistantContent);
+        }
+      }
+
       if (this.currentAssistantCard && this.currentAssistantContent.trim()) {
         this.messages.push({
           id: Date.now(),
@@ -857,7 +941,9 @@
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         });
       }
+      // Seal active card as permanent static DOM element; future assistant turns start a new card
       this.currentAssistantCard = null;
+      this.currentBodyEl = null;
       this.currentAssistantContent = "";
     },
 
@@ -892,66 +978,72 @@
         </div>
         <div class="msg-body">${renderFormattedMarkdown(msg.text)}</div>
       `;
-      setupCopyButtons(card.querySelector(".msg-body"));
       guiChatMessages.appendChild(card);
     },
   };
 
   function renderFormattedMarkdown(text) {
     if (!text) return "";
-    let html = escapeHtml(text);
 
-    // Code blocks with triple backticks ```
-    html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    // 1. Extract code blocks (including unclosed streaming blocks) to protect newlines from <br>
+    const codeBlocks = [];
+    let processed = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)(?:```|$)/g, (match, lang, code) => {
+      const placeholder = `__TUNMINAL_CODE_${codeBlocks.length}__`;
       const language = lang || "code";
-      return `
-        <div class="gui-code-block">
-          <div class="gui-code-header">
-            <span>${language}</span>
-            <button type="button" class="btn-copy-code" data-code="${encodeURIComponent(code)}">Copy</button>
-          </div>
-          <pre class="gui-code-content"><code>${code}</code></pre>
-        </div>
-      `;
+      codeBlocks.push({
+        language,
+        code,
+      });
+      return placeholder;
     });
 
-    // Tool executions (lines starting with ● or ❯)
+    let html = escapeHtml(processed);
+
+    // 2. Tool executions (lines starting with ● or ❯)
     html = html.replace(/^[●❯]\s*(.*)$/gm, '<div class="gui-tool-card">🛠️ <span>$1</span></div>');
 
-    // Bold **text**
+    // 3. Bold **text**
     html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
 
-    // Inline code `code`
+    // 4. Inline code `code`
     html = html.replace(/`([^`]+)`/g, '<code style="background:#21262d; padding:2px 5px; border-radius:4px; font-family:monospace; color:#79c0ff;">$1</code>');
 
-    // Headers #, ##, ###
+    // 5. Headers #, ##, ###
     html = html.replace(/^### (.*$)/gim, '<h4 style="margin:10px 0 4px; color:#58a6ff; font-weight:700;">$1</h4>');
     html = html.replace(/^## (.*$)/gim, '<h3 style="margin:12px 0 6px; color:#79c0ff; font-weight:700;">$1</h3>');
     html = html.replace(/^# (.*$)/gim, '<h2 style="margin:14px 0 8px; color:#e6edf3; font-weight:700;">$1</h2>');
 
-    // Newlines to <br> (outside code blocks)
+    // 6. Newlines to <br> outside code blocks
     html = html.replace(/\n/g, "<br>");
+
+    // 7. Re-insert code blocks with clean formatting and copy button
+    for (let i = 0; i < codeBlocks.length; i++) {
+      const { language, code } = codeBlocks[i];
+      const blockHtml = `
+        <div class="gui-code-block">
+          <div class="gui-code-header">
+            <span>${escapeHtml(language)}</span>
+            <button type="button" class="btn-copy-code" data-code="${encodeURIComponent(code)}">Copy</button>
+          </div>
+          <pre class="gui-code-content"><code>${escapeHtml(code)}</code></pre>
+        </div>
+      `;
+      html = html.replace(`__TUNMINAL_CODE_${i}__`, blockHtml);
+    }
 
     return html;
   }
 
-  function setupCopyButtons(container) {
-    container.querySelectorAll(".btn-copy-code").forEach((btn) => {
-      btn.onclick = async () => {
-        const code = decodeURIComponent(btn.getAttribute("data-code") || "");
-        try {
-          await navigator.clipboard.writeText(code);
-          btn.textContent = "Copied!";
-          setTimeout(() => (btn.textContent = "Copy"), 2000);
-        } catch (e) {
-          btn.textContent = "Failed";
-        }
-      };
-    });
-  }
-
-  function scrollGuiToBottom() {
-    if (guiChatMessages) {
+  function scrollGuiToBottom(force = false) {
+    if (!guiChatMessages) return;
+    if (force) {
+      guiChatMessages.scrollTop = guiChatMessages.scrollHeight;
+      return;
+    }
+    // Smart scroll: only auto-scroll if user is pinned near the bottom (within 120px)
+    const distanceFromBottom =
+      guiChatMessages.scrollHeight - guiChatMessages.scrollTop - guiChatMessages.clientHeight;
+    if (distanceFromBottom < 120) {
       guiChatMessages.scrollTop = guiChatMessages.scrollHeight;
     }
   }
@@ -1043,6 +1135,23 @@
         }
       });
     });
+
+    // Delegated copy button listener for all GUI code blocks (prevents re-binding overhead)
+    if (guiChatMessages) {
+      guiChatMessages.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".btn-copy-code");
+        if (!btn) return;
+        const code = decodeURIComponent(btn.getAttribute("data-code") || "");
+        try {
+          await navigator.clipboard.writeText(code);
+          const origText = btn.textContent;
+          btn.textContent = "Copied!";
+          setTimeout(() => (btn.textContent = origText), 2000);
+        } catch (err) {
+          btn.textContent = "Failed";
+        }
+      });
+    }
   }
 
   function submitGuiPrompt() {
@@ -1273,7 +1382,7 @@
       if (event.data instanceof ArrayBuffer) {
         const u8 = new Uint8Array(event.data);
         term.write(u8);
-        textChunk = new TextDecoder("utf-8", { fatal: false }).decode(u8);
+        textChunk = utf8Decoder.decode(u8);
       } else if (typeof event.data === "string") {
         if (event.data.includes('"pong"')) return;
         if (event.data.includes('"auth_error"')) {
@@ -1285,7 +1394,10 @@
       }
 
       if (textChunk) {
-        guiParser.appendStream(textChunk);
+        const session = getActiveSession();
+        if (isAiAgentSession(session)) {
+          guiParser.appendStream(textChunk);
+        }
       }
     };
 
