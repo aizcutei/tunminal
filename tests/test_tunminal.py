@@ -1,6 +1,7 @@
 import asyncio
-import concurrent.futures
 import sys
+import time
+import anyio
 import pytest
 from starlette.testclient import TestClient
 
@@ -11,13 +12,18 @@ from tunminal.server import create_app
 
 
 def receive_with_timeout(ws, timeout=3.0):
-    """Safely receive from websocket with timeout to prevent test hanging."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(ws.receive)
+    """Safely receive from starlette WebSocketTestSession without blocking thread executors."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
         try:
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
+            if hasattr(ws, "portal") and hasattr(ws, "_send_rx"):
+                return ws.portal.call(ws._send_rx.receive_nowait)
+            return ws.receive()
+        except anyio.WouldBlock:
+            time.sleep(0.05)
+        except Exception:
             return None
+    return None
 
 
 def test_auth_manager(tmp_path, monkeypatch):
@@ -95,7 +101,7 @@ async def test_pty_echo():
     if sys.platform == "win32":
         pytest.skip("Skipping UnixPty test on Windows")
 
-    pty = spawn_pty(command=["echo", "tunminal_test"])
+    pty = spawn_pty(command=[sys.executable, "-u", "-c", "print('tunminal_test', flush=True)"])
     assert pty.pid is not None
 
     output = b""
