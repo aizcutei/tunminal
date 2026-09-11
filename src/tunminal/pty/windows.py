@@ -37,11 +37,11 @@ class WindowsPty(BasePty):
         self._eof = False
 
         if isinstance(command, list):
-            cmd_args = list(command)
+            cmd_args = subprocess_list_to_cmd(command)
         elif isinstance(command, str):
             cmd_args = command
         else:
-            cmd_args = ["powershell.exe"]
+            cmd_args = "powershell.exe"
 
         proc_env = os.environ.copy()
         if env:
@@ -96,7 +96,7 @@ class WindowsPty(BasePty):
         while not self._closed:
             if self._chunks:
                 return self._chunks.popleft()
-            if self._eof or not self.is_alive():
+            if self._eof:
                 if self._chunks:
                     return self._chunks.popleft()
                 return b""
@@ -107,16 +107,14 @@ class WindowsPty(BasePty):
 
     def _reader_worker(self) -> None:
         try:
-            while not self._closed and self._proc and self._proc.isalive():
+            while not self._closed and self._proc:
                 try:
                     data = self._proc.read(4096)
                     if not data:
                         break
                     chunk = data.encode("utf-8", errors="replace") if isinstance(data, str) else data
                     self._chunks.append(chunk)
-                except EOFError:
-                    break
-                except Exception:
+                except (EOFError, OSError, Exception):
                     break
         finally:
             self._eof = True

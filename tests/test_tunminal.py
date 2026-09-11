@@ -113,7 +113,7 @@ async def test_pty_echo():
 async def test_session_manager_lifecycle():
     mgr = SessionManager()
     # Cross-platform command working on Windows, Linux, and macOS
-    cmd = [sys.executable, "-c", "print('session_output')"]
+    cmd = [sys.executable, "-u", "-c", "print('session_output')"]
     session = mgr.create_session(name="TestSession", command=cmd)
     assert session.session_id in [s["id"] for s in mgr.list_sessions()]
 

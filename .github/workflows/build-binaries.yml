@@ -64,11 +64,11 @@ jobs:
 
       - name: Run unit tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a uv run pytest -v
+        run: xvfb-run -a uv run pytest -v --tb=short
 
       - name: Run unit tests (Non-Linux)
         if: runner.os != 'Linux'
-        run: uv run pytest -v
+        run: uv run pytest -v --tb=short
 
       - name: Build standalone executable with PyInstaller
         run: uv run pyinstaller --noconfirm --clean tunminal.spec
