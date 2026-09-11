@@ -233,3 +233,28 @@ def test_server_routes():
         assert found_pong, "Expected pong response from websocket"
 
     mgr.close_all()
+
+
+def test_cloudflare_tunnel_decoding():
+    from tunminal.tunnel import CloudflareTunnel
+    import io
+
+    tunnel = CloudflareTunnel(local_port=8080)
+    # Simulate stderr emitting multibyte UTF-8 sequences (like byte 0xac) and tunnel URL
+    # \u20ac in UTF-8 is b'\xe2\x82\xac' which caused 'gbk' codec UnicodeDecodeError on Windows
+    simulated_output = (
+        "2026-09-11T14:00:00Z INF Tunnel status: active € ⚡ 欢迎使用\n"
+        "2026-09-11T14:00:01Z INF | https://test-sample-123.trycloudflare.com |\n"
+    )
+
+    class MockProc:
+        def __init__(self):
+            self.stderr = io.StringIO(simulated_output)
+            self.poll = lambda: 0
+
+    tunnel._proc = MockProc()
+    tunnel._monitor_output()
+
+    assert tunnel.tunnel_url == "https://test-sample-123.trycloudflare.com"
+    assert tunnel._url_event.is_set()
+

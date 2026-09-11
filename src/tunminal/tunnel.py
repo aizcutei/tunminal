@@ -99,12 +99,14 @@ class CloudflareTunnel:
 
         logger.info("Starting Cloudflare Tunnel: %s", " ".join(cmd))
         try:
-            # cloudflared prints tunnel info to stderr
+            # cloudflared prints tunnel info to stderr (UTF-8 encoded)
             self._proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
         except Exception as e:
@@ -129,15 +131,18 @@ class CloudflareTunnel:
         if not self._proc or not self._proc.stderr:
             return
 
-        for line in iter(self._proc.stderr.readline, ""):
-            if self._stopped:
-                break
-            match = CLOUDFLARE_REGEX.search(line)
-            if match and not self.tunnel_url:
-                self.tunnel_url = match.group(0)
-                self._url_event.set()
-
-        self._url_event.set()
+        try:
+            for line in iter(self._proc.stderr.readline, ""):
+                if self._stopped:
+                    break
+                match = CLOUDFLARE_REGEX.search(line)
+                if match and not self.tunnel_url:
+                    self.tunnel_url = match.group(0)
+                    self._url_event.set()
+        except Exception as e:
+            logger.warning("Error reading cloudflared output: %s", e)
+        finally:
+            self._url_event.set()
 
     def stop(self) -> None:
         self._stopped = True
