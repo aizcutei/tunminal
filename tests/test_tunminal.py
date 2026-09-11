@@ -112,11 +112,12 @@ async def test_pty_echo():
 @pytest.mark.asyncio
 async def test_session_manager_lifecycle():
     mgr = SessionManager()
-    session = mgr.create_session(name="TestSession")
+    # Cross-platform command working on Windows, Linux, and macOS
+    cmd = [sys.executable, "-u", "-c", "import sys; sys.stdout.write('session_output\\n'); sys.stdout.flush()"]
+    session = mgr.create_session(name="TestSession", command=cmd)
     assert session.session_id in [s["id"] for s in mgr.list_sessions()]
 
-    # Write command into interactive terminal shell and verify buffer
-    session.write(b"echo session_output\r\n")
+    # Wait for output to complete and buffer to populate
     for _ in range(30):
         if b"session_output" in session._buffer:
             break
@@ -145,11 +146,17 @@ def test_server_routes():
     assert "presets" in data
     assert "platform" in data
 
-    # 3. Create session via POST
+    # 3. Create session via POST using line-by-line unbuffered python echo
+    py_cat = [
+        sys.executable,
+        "-u",
+        "-c",
+        "import sys\nwhile True:\n    line = sys.stdin.readline()\n    if not line: break\n    sys.stdout.write(line)\n    sys.stdout.flush()\n",
+    ]
     res = client.post(
         "/api/sessions",
         headers={"Authorization": "Bearer testtoken"},
-        json={"name": "ApiTestSession"},
+        json={"name": "ApiTestSession", "command": py_cat},
     )
     assert res.status_code == 200
     session_id = res.json()["id"]
@@ -171,7 +178,7 @@ def test_server_routes():
     # 6. Session reconnect / pick-up test:
     # First connection (browser 1)
     with client.websocket_connect(f"/ws/{session_id}?token=testtoken") as ws1:
-        ws1.send_text("echo persisted_terminal_data\r\n")
+        ws1.send_text("persisted_terminal_data\r\n")
         received = b""
         for _ in range(30):
             msg = receive_with_timeout(ws1, timeout=1.5)
