@@ -126,19 +126,19 @@
   async function startApp() {
     if (!appStarted) {
       appStarted = true;
-      initThemes();
-      initTerminal();
-      setupBellAndNotifications();
-      setupFileTransfer();
-      setupViewMode();
-      setupViewportHandler();
-      setupKeypad();
-      setupSessionsManager();
-      setupGuiComposer();
-      setupNetworkWakeListeners();
+      try { initThemes(); } catch (e) { console.error("initThemes error:", e); }
+      try { initTerminal(); } catch (e) { console.error("initTerminal error:", e); }
+      try { setupBellAndNotifications(); } catch (e) { console.error("setupBellAndNotifications error:", e); }
+      try { setupFileTransfer(); } catch (e) { console.error("setupFileTransfer error:", e); }
+      try { setupViewMode(); } catch (e) { console.error("setupViewMode error:", e); }
+      try { setupViewportHandler(); } catch (e) { console.error("setupViewportHandler error:", e); }
+      try { setupKeypad(); } catch (e) { console.error("setupKeypad error:", e); }
+      try { setupSessionsManager(); } catch (e) { console.error("setupSessionsManager error:", e); }
+      try { setupGuiComposer(); } catch (e) { console.error("setupGuiComposer error:", e); }
+      try { setupNetworkWakeListeners(); } catch (e) { console.error("setupNetworkWakeListeners error:", e); }
     }
-    await loadPresetsAndInfo();
-    await refreshSessions();
+    try { await loadPresetsAndInfo(); } catch (e) { console.error("loadPresetsAndInfo error:", e); }
+    try { await refreshSessions(); } catch (e) { console.error("refreshSessions error:", e); }
 
     if (sessionPollTimer) clearInterval(sessionPollTimer);
     sessionPollTimer = setInterval(refreshSessionsBackground, 8000);
@@ -542,10 +542,17 @@
 
     // Suppress OSC color queries (10=fg, 11=bg, 12=cursor, 4=palette) so xterm doesn't
     // report terminal colors back to stdin, which leaks as literal text in Windows ConPTY / Codex.
-    term.registerOscHandler(10, (data) => (data && data.startsWith("?") ? true : false));
-    term.registerOscHandler(11, (data) => (data && data.startsWith("?") ? true : false));
-    term.registerOscHandler(12, (data) => (data && data.startsWith("?") ? true : false));
-    term.registerOscHandler(4, (data) => (data && data.includes("?") ? true : false));
+    try {
+      const oscParser = term.parser || (typeof term.registerOscHandler === "function" ? term : null);
+      if (oscParser && typeof oscParser.registerOscHandler === "function") {
+        oscParser.registerOscHandler(10, (data) => (data && data.startsWith("?") ? true : false));
+        oscParser.registerOscHandler(11, (data) => (data && data.startsWith("?") ? true : false));
+        oscParser.registerOscHandler(12, (data) => (data && data.startsWith("?") ? true : false));
+        oscParser.registerOscHandler(4, (data) => (data && data.includes("?") ? true : false));
+      }
+    } catch (e) {
+      console.warn("Could not register OSC query handlers on term.parser:", e);
+    }
 
     term.onData((data) => {
       // Guard: strip any OSC color query response sequences that xterm might emit
