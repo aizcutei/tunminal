@@ -705,7 +705,9 @@
   }
 
   // 5. High-Performance Full GUI Stream Parser & Cleaner
-  const ANSI_REGEX = /(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1b]*(\x07|\x1B\\))/g;
+  // Order matters: match complete OSC (Operating System Commands), complete CSI sequences,
+  // 2-character escape codes, and C1 controls without range ambiguity.
+  const ANSI_REGEX = /(?:\x1B\][^\x07\x1b]*(?:\x07|\x1B\\)|\x1B\[[0-?]*[ -/]*[@-~]|\x1B[@-Z\\_]|[\x80-\x9A\x9C-\x9F])/g;
 
   function stripAnsi(str) {
     return str ? str.replace(ANSI_REGEX, "") : "";
@@ -880,6 +882,7 @@
       // Process lines handling carriage return (\r) overwrites & transient spinners
       const rawLines = clean.split("\n");
       let meaningfulContent = "";
+      let hasReadyPrompt = false;
 
       for (let i = 0; i < rawLines.length; i++) {
         let line = rawLines[i];
@@ -893,7 +896,26 @@
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // Detect CLI spinner frames with optional indentation: e.g. ⠋ Thinking..., ◐ Working...
+        // 1. Detect interactive prompt lines (Claude Code or Codex)
+        if (
+          /›\s*(Ask Codex|What would you like)/i.test(trimmed) ||
+          /^\?\s+.*\s*›\s*$/.test(trimmed) ||
+          /›\s*$/.test(trimmed) ||
+          /^\?\s+for shortcuts/i.test(trimmed)
+        ) {
+          hasReadyPrompt = true;
+          continue; // Do NOT append raw prompt redraw into chat text
+        }
+
+        // 2. Detect and filter Braille animation frames (Codex idle dots/spinners: [\u2800-\u28FF])
+        const brailleMatches = trimmed.match(/[\u2800-\u28FF]/g);
+        const brailleCount = brailleMatches ? brailleMatches.length : 0;
+        const nonSpaceLen = trimmed.replace(/\s/g, "").length;
+        if (brailleCount > 0 && (brailleCount / nonSpaceLen >= 0.25 || /^[\u2800-\u28FF]/.test(trimmed))) {
+          continue; // Discard transient idle starfield/spinner animation
+        }
+
+        // 3. Detect standard CLI spinner frames with optional indentation: e.g. ⠋ Thinking..., ◐ Working...
         const spinnerMatch = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒◜◝◞◟]\s*(.*)/.exec(trimmed);
         if (spinnerMatch) {
           const statusText = spinnerMatch[1] ? spinnerMatch[1].trim() : "Working...";
@@ -901,19 +923,29 @@
           continue; // Do NOT append transient spinner frame into permanent chat text
         }
 
-        // Detect transient thinking / progress timer updates: e.g. "● Thinking... (2s)" or "● Running command..."
+        // 4. Detect transient thinking / progress timer updates: e.g. "● Thinking... (2s)" or "● Running command..."
         if (/^●\s*(Thinking|Working|Running|Waiting|Searching|Generating).*\(\d+(\.\d+)?s\)/i.test(trimmed)) {
           setAgentStatusText(trimmed, true);
           continue;
         }
 
-        // Filter decorative box drawing frames
-        if (/^[╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝─\s]+$/.test(trimmed) && trimmed.length > 2) {
+        // 5. Filter decorative and box drawing frames (including full Unicode Box Drawing \u2500-\u257F)
+        if (/^[\u2500-\u257F\s╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝]+$/.test(trimmed) && trimmed.length > 2) {
           continue;
         }
 
-        // Filter raw prompt redraw lines: ? What would you like to do? ›
+        // 6. Filter Codex startup banner & tips
+        if (
+          /^│\s*(>_\s*OpenAI Codex|model:|directory:)/i.test(trimmed) ||
+          /^Tip:\s/i.test(trimmed) ||
+          /^>_\s*OpenAI Codex/i.test(trimmed)
+        ) {
+          continue;
+        }
+
+        // 7. Filter raw prompt redraw lines: ? What would you like to do? ›
         if (/^\?\s+.*\s*›\s*$/.test(trimmed)) {
+          hasReadyPrompt = true;
           continue;
         }
 
@@ -921,6 +953,7 @@
       }
 
       if (meaningfulContent) {
+        // Only remove welcome hero when genuine conversation content arrives
         const hero = guiChatMessages.querySelector(".gui-welcome-hero");
         if (hero) hero.remove();
 
@@ -933,7 +966,19 @@
         }
       }
 
-      // If output goes idle for 1.8s, agent turn has completed -> seal card into static DOM
+      // If interactive ready prompt was detected, finalize assistant turn immediately
+      if (hasReadyPrompt) {
+        if (streamIdleTimer) {
+          clearTimeout(streamIdleTimer);
+          streamIdleTimer = null;
+        }
+        this.flushPending(false);
+        this.finalizeAssistantMessage();
+        setAgentWorkingState(false);
+        return;
+      }
+
+      // Fallback: If output goes idle for 1.8s, agent turn has completed -> seal card into static DOM
       if (streamIdleTimer) clearTimeout(streamIdleTimer);
       streamIdleTimer = setTimeout(() => {
         this.flushPending(false);
