@@ -3,6 +3,7 @@ import collections
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from fastapi import WebSocket
 
@@ -160,11 +161,23 @@ class TerminalSession:
         if self._pty:
             self._pty.close()
 
+    def get_cwd(self) -> str:
+        """Return the resolved working directory for this session."""
+        if self.cwd:
+            try:
+                p = Path(self.cwd).resolve()
+                if p.exists() and p.is_dir():
+                    return str(p)
+            except Exception:
+                pass
+        return str(Path.cwd().resolve())
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.session_id,
             "name": self.name,
             "command": self.command,
+            "cwd": self.get_cwd(),
             "pid": self.pid,
             "alive": self.is_alive(),
             "cols": self.cols,

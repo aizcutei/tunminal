@@ -21,6 +21,11 @@
 
   // DOM Elements
   const statusEl = document.getElementById("connection-status");
+  const latencyBadge = document.getElementById("latency-badge");
+  const btnBellToggle = document.getElementById("btn-bell-toggle");
+  const btnFilesModal = document.getElementById("btn-files-modal");
+  const filesModal = document.getElementById("files-modal");
+  const fileDropOverlay = document.getElementById("file-drop-overlay");
   const tabsBar = document.getElementById("tabs-bar");
   const termContainer = document.getElementById("terminal-container");
   const guiContainer = document.getElementById("gui-container");
@@ -118,6 +123,8 @@
       appStarted = true;
       initThemes();
       initTerminal();
+      setupBellAndNotifications();
+      setupFileTransfer();
       setupViewMode();
       setupViewportHandler();
       setupKeypad();
@@ -460,6 +467,10 @@
 
     term.onData((data) => {
       sendTerminalInput(data);
+    });
+
+    term.onBell(() => {
+      playBellSound();
     });
 
     window.addEventListener("resize", () => {
@@ -1280,17 +1291,19 @@
     });
   }
 
-  async function createNewSession(command, name) {
+  async function createNewSession(command, name, cwd = null) {
     try {
+      const payload = {
+        command: command,
+        name: name,
+        cols: term ? term.cols : 80,
+        rows: term ? term.rows : 24,
+      };
+      if (cwd) payload.cwd = cwd;
       const res = await apiFetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          command: command,
-          name: name,
-          cols: term ? term.cols : 80,
-          rows: term ? term.rows : 24,
-        }),
+        body: JSON.stringify(payload),
       });
       const session = await res.json();
       await refreshSessions();
@@ -1370,9 +1383,10 @@
 
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "ping" }));
+          ws.send(JSON.stringify({ type: "ping", time: Date.now() }));
         }
-      }, 15000);
+      }, 3000);
+      ws.send(JSON.stringify({ type: "ping", time: Date.now() }));
     };
 
     ws.onmessage = (event) => {
@@ -1384,7 +1398,16 @@
         term.write(u8);
         textChunk = utf8Decoder.decode(u8);
       } else if (typeof event.data === "string") {
-        if (event.data.includes('"pong"')) return;
+        if (event.data.includes('"pong"')) {
+          try {
+            const parsed = JSON.parse(event.data);
+            if (parsed.type === "pong" && parsed.time) {
+              const rtt = Math.max(0, Date.now() - parsed.time);
+              updateLatencyBadge(rtt);
+            }
+          } catch (e) {}
+          return;
+        }
         if (event.data.includes('"auth_error"')) {
           handleAuthFailure("Authentication failed: invalid token");
           return;
@@ -1394,6 +1417,7 @@
       }
 
       if (textChunk) {
+        checkOscNotifications(textChunk);
         const session = getActiveSession();
         if (isAiAgentSession(session)) {
           guiParser.appendStream(textChunk);
@@ -1403,6 +1427,11 @@
 
     ws.onclose = async (event) => {
       if (ws !== activeSocket) return;
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+      resetLatencyBadge();
       statusEl.className = "status-badge disconnected";
       statusEl.title = "Disconnected";
 
@@ -1448,7 +1477,413 @@
     };
   }
 
-  // 10. Sessions Manager Dialog
+  // 10. Latency Monitoring & Badge
+  function updateLatencyBadge(latencyMs) {
+    if (!latencyBadge) return;
+    latencyBadge.classList.remove("hidden");
+    latencyBadge.textContent = `${latencyMs} ms`;
+    latencyBadge.classList.remove("good", "medium", "slow");
+    if (latencyMs < 100) {
+      latencyBadge.classList.add("good");
+    } else if (latencyMs < 250) {
+      latencyBadge.classList.add("medium");
+    } else {
+      latencyBadge.classList.add("slow");
+    }
+    latencyBadge.title = `WebSocket Ping Latency: ${latencyMs}ms`;
+  }
+
+  function resetLatencyBadge() {
+    if (!latencyBadge) return;
+    latencyBadge.textContent = "-- ms";
+    latencyBadge.classList.remove("good", "medium", "slow");
+    latencyBadge.classList.add("hidden");
+  }
+
+  // 11. Terminal Bell (Web Audio API) & OSC Notifications
+  let audioCtx = null;
+  let bellSoundEnabled = localStorage.getItem("tunminal_bell_enabled") !== "false";
+
+  function updateBellButtonUI() {
+    if (!btnBellToggle) return;
+    if (bellSoundEnabled) {
+      btnBellToggle.textContent = "🔔";
+      btnBellToggle.title = "Terminal Bell & Notifications: ON (click to mute)";
+      btnBellToggle.classList.remove("muted");
+    } else {
+      btnBellToggle.textContent = "🔕";
+      btnBellToggle.title = "Terminal Bell & Notifications: MUTED (click to enable)";
+      btnBellToggle.classList.add("muted");
+    }
+  }
+
+  function playBellSound() {
+    if (!bellSoundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioCtx) {
+        audioCtx = new AudioCtx();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // 880Hz (A5)
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.32);
+    } catch (e) {
+      // Audio playback might need user interaction first
+    }
+  }
+
+  function showTerminalNotification(title, body) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      new Notification(title || "Tunminal Notification", {
+        body: body || "Task completed in terminal",
+      });
+    } catch (e) {}
+  }
+
+  function checkOscNotifications(chunk) {
+    if (!chunk) return;
+    // 1. BEL character (\x07)
+    if (chunk.includes("\x07")) {
+      playBellSound();
+    }
+    // 2. OSC 777 notification: \x1b]777;notify;TITLE;BODY\x07 or \x1b]777;notify;TITLE;BODY\x1b\
+    const osc777 = /\x1b\]777;notify;([^;\x07\x1b]+)(?:;([^\x07\x1b]*))?(?:\x07|\x1b\\)/g;
+    let m777;
+    while ((m777 = osc777.exec(chunk)) !== null) {
+      playBellSound();
+      if (document.hidden) {
+        showTerminalNotification(m777[1], m777[2] || "");
+      }
+    }
+    // 3. OSC 9 notification: \x1b]9;BODY\x07 or \x1b]9;BODY\x1b\
+    const osc9 = /\x1b\]9;([^\x07\x1b]+)(?:\x07|\x1b\\)/g;
+    let m9;
+    while ((m9 = osc9.exec(chunk)) !== null) {
+      playBellSound();
+      if (document.hidden) {
+        showTerminalNotification("Tunminal Notification", m9[1]);
+      }
+    }
+  }
+
+  function setupBellAndNotifications() {
+    if (btnBellToggle) {
+      btnBellToggle.addEventListener("click", () => {
+        bellSoundEnabled = !bellSoundEnabled;
+        localStorage.setItem("tunminal_bell_enabled", bellSoundEnabled ? "true" : "false");
+        updateBellButtonUI();
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission().catch(() => {});
+        }
+        if (bellSoundEnabled) {
+          playBellSound();
+          showToast("Sound notifications enabled");
+        } else {
+          showToast("Sound notifications muted");
+        }
+      });
+      updateBellButtonUI();
+    }
+  }
+
+  // 12. File Transfer & Session Explorer
+  let currentFilesPath = "";
+
+  function formatBytes(bytes) {
+    if (bytes === 0 || !bytes) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  }
+
+  async function uploadFiles(sessionId, fileList, subpath = "") {
+    if (!sessionId) return;
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      showToast(`Uploading ${file.name}...`);
+      try {
+        const query = new URLSearchParams({
+          filename: file.name,
+          subpath: subpath,
+        });
+        const res = await fetch(`/api/sessions/${sessionId}/upload?${query.toString()}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: file,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          showToast(`Upload failed: ${data.detail || res.statusText}`);
+        } else {
+          showToast(`Uploaded ${file.name} (${formatBytes(file.size)})`);
+        }
+      } catch (e) {
+        showToast(`Upload failed: ${e.message}`);
+      }
+    }
+    if (filesModal && filesModal.open) {
+      await loadSessionFiles(sessionId, currentFilesPath);
+    }
+  }
+
+  async function downloadFile(sessionId, filePath, fileName) {
+    showToast(`Downloading ${fileName}...`);
+    try {
+      const query = new URLSearchParams({ path: filePath });
+      const res = await fetch(`/api/sessions/${sessionId}/download?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        showToast("Download failed");
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      showToast(`Download failed: ${e.message}`);
+    }
+  }
+
+  async function loadSessionFiles(sessionId, relPath = "") {
+    if (!sessionId) return;
+    currentFilesPath = relPath;
+    try {
+      const query = relPath ? `?path=${encodeURIComponent(relPath)}` : "";
+      const res = await apiFetch(`/api/sessions/${sessionId}/files${query}`);
+      if (!res.ok) {
+        showToast("Failed to load session files");
+        return;
+      }
+      const data = await res.json();
+      renderFilesList(sessionId, data);
+    } catch (e) {
+      showToast("Error loading files");
+    }
+  }
+
+  function renderFilesList(sessionId, data) {
+    const filesCurrentDir = document.getElementById("files-current-dir");
+    const filesBreadcrumb = document.getElementById("files-breadcrumb");
+    const filesTableBody = document.getElementById("files-table-body");
+
+    if (filesCurrentDir) {
+      filesCurrentDir.textContent = `Working directory: ${data.cwd}`;
+    }
+
+    if (filesBreadcrumb) {
+      filesBreadcrumb.innerHTML = "";
+      const rootSpan = document.createElement("span");
+      rootSpan.className = "breadcrumb-segment";
+      rootSpan.textContent = "root";
+      rootSpan.addEventListener("click", () => loadSessionFiles(sessionId, ""));
+      filesBreadcrumb.appendChild(rootSpan);
+
+      if (data.current_path) {
+        const parts = data.current_path.split("/").filter(Boolean);
+        let accum = "";
+        parts.forEach((p) => {
+          accum = accum ? `${accum}/${p}` : p;
+          const currentAccum = accum;
+          const sep = document.createElement("span");
+          sep.className = "breadcrumb-sep";
+          sep.textContent = " / ";
+          filesBreadcrumb.appendChild(sep);
+
+          const seg = document.createElement("span");
+          seg.className = "breadcrumb-segment";
+          seg.textContent = p;
+          seg.addEventListener("click", () => loadSessionFiles(sessionId, currentAccum));
+          filesBreadcrumb.appendChild(seg);
+        });
+      }
+    }
+
+    if (filesTableBody) {
+      filesTableBody.innerHTML = "";
+
+      if (data.current_path) {
+        const parentParts = data.current_path.split("/").filter(Boolean);
+        parentParts.pop();
+        const parentPath = parentParts.join("/");
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div class="file-row-name">
+              <span>📁</span>
+              <span class="file-dir-link">..</span>
+            </div>
+          </td>
+          <td class="col-size">-</td>
+          <td class="col-date">-</td>
+          <td class="col-action"></td>
+        `;
+        tr.querySelector(".file-dir-link").addEventListener("click", () => {
+          loadSessionFiles(sessionId, parentPath);
+        });
+        filesTableBody.appendChild(tr);
+      }
+
+      if (!data.items || data.items.length === 0) {
+        const emptyTr = document.createElement("tr");
+        emptyTr.innerHTML = `<td colspan="4" class="files-empty">No files in this directory</td>`;
+        filesTableBody.appendChild(emptyTr);
+        return;
+      }
+
+      data.items.forEach((item) => {
+        const tr = document.createElement("tr");
+        const itemRelPath = data.current_path ? `${data.current_path}/${item.name}` : item.name;
+        const icon = item.is_dir ? "📁" : "📄";
+        const dateStr = item.mtime ? new Date(item.mtime * 1000).toLocaleString() : "-";
+        const sizeStr = item.is_dir ? "-" : formatBytes(item.size);
+
+        tr.innerHTML = `
+          <td>
+            <div class="file-row-name">
+              <span>${icon}</span>
+              ${
+                item.is_dir
+                  ? `<span class="file-dir-link">${escapeHtml(item.name)}</span>`
+                  : `<span class="file-link">${escapeHtml(item.name)}</span>`
+              }
+            </div>
+          </td>
+          <td class="col-size">${sizeStr}</td>
+          <td class="col-date">${dateStr}</td>
+          <td class="col-action">
+            ${
+              !item.is_dir
+                ? `<button type="button" class="btn btn-sm btn-download" title="Download">⬇</button>`
+                : ""
+            }
+          </td>
+        `;
+
+        if (item.is_dir) {
+          tr.querySelector(".file-dir-link").addEventListener("click", () => {
+            loadSessionFiles(sessionId, itemRelPath);
+          });
+        } else {
+          const dlBtn = tr.querySelector(".btn-download");
+          if (dlBtn) {
+            dlBtn.addEventListener("click", () => {
+              downloadFile(sessionId, itemRelPath, item.name);
+            });
+          }
+        }
+
+        filesTableBody.appendChild(tr);
+      });
+    }
+  }
+
+  function setupFileTransfer() {
+    let dragCounter = 0;
+    window.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (currentSessionId && fileDropOverlay) {
+        fileDropOverlay.classList.remove("hidden");
+      }
+    });
+
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (fileDropOverlay) fileDropOverlay.classList.add("hidden");
+      }
+    });
+
+    window.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      if (fileDropOverlay) fileDropOverlay.classList.add("hidden");
+      if (!currentSessionId) return;
+
+      const files = e.dataTransfer ? e.dataTransfer.files : null;
+      if (files && files.length > 0) {
+        await uploadFiles(currentSessionId, files, currentFilesPath);
+      }
+    });
+
+    const filesModalClose = document.getElementById("files-modal-close");
+    const filesModalDone = document.getElementById("files-modal-done");
+    const btnFilesUpload = document.getElementById("btn-files-upload");
+    const filesHiddenInput = document.getElementById("files-hidden-input");
+    const btnFilesRefresh = document.getElementById("btn-files-refresh");
+
+    if (btnFilesModal) {
+      btnFilesModal.addEventListener("click", async () => {
+        if (!currentSessionId) {
+          showToast("No active terminal session");
+          return;
+        }
+        currentFilesPath = "";
+        await loadSessionFiles(currentSessionId, "");
+        if (filesModal) filesModal.showModal();
+      });
+    }
+
+    if (filesModalClose) {
+      filesModalClose.addEventListener("click", () => filesModal.close());
+    }
+
+    if (filesModalDone) {
+      filesModalDone.addEventListener("click", () => filesModal.close());
+    }
+
+    if (btnFilesRefresh) {
+      btnFilesRefresh.addEventListener("click", () => {
+        if (currentSessionId) {
+          loadSessionFiles(currentSessionId, currentFilesPath);
+        }
+      });
+    }
+
+    if (btnFilesUpload && filesHiddenInput) {
+      btnFilesUpload.addEventListener("click", () => {
+        filesHiddenInput.click();
+      });
+
+      filesHiddenInput.addEventListener("change", async () => {
+        if (filesHiddenInput.files && filesHiddenInput.files.length > 0) {
+          await uploadFiles(currentSessionId, filesHiddenInput.files, currentFilesPath);
+          filesHiddenInput.value = "";
+        }
+      });
+    }
+  }
+
+  // 13. Sessions Manager Dialog
   function setupSessionsManager() {
     const btnSessionsList = document.getElementById("btn-sessions-list");
     const sessionsModalClose = document.getElementById("sessions-modal-close");
@@ -1663,8 +2098,9 @@
     document.getElementById("custom-session-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const cmd = document.getElementById("custom-cmd").value.trim() || null;
+      const cwd = document.getElementById("custom-cwd").value.trim() || null;
       const name = document.getElementById("custom-name").value.trim() || null;
-      createNewSession(cmd, name);
+      createNewSession(cmd, name, cwd);
       newSessionModal.close();
     });
   }

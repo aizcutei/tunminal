@@ -90,6 +90,59 @@ html, body {
   background-color: var(--status-disconnected);
 }
 
+.latency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.latency-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--status-connecting);
+}
+
+.latency-badge.good {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.latency-badge.good::before {
+  background-color: #3fb950;
+  box-shadow: 0 0 5px #3fb950;
+}
+
+.latency-badge.medium {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.3);
+}
+
+.latency-badge.medium::before {
+  background-color: #d29922;
+}
+
+.latency-badge.slow {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+.latency-badge.slow::before {
+  background-color: #f85149;
+}
+
 /* Tab Bar */
 .tabs-bar {
   display: flex;
@@ -1239,4 +1292,196 @@ html, body {
   font-weight: 600;
   text-align: center;
   color: var(--text-primary);
+}
+
+/* File Drag & Drop Overlay */
+.file-drop-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  background-color: rgba(15, 17, 23, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.file-drop-box {
+  border: 2px dashed var(--accent);
+  background: rgba(88, 166, 255, 0.08);
+  border-radius: 16px;
+  padding: 40px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.file-drop-icon {
+  font-size: 48px;
+  animation: bounce 1.2s infinite alternate;
+}
+
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-8px); }
+}
+
+.file-drop-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.file-drop-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Files Modal & Explorer */
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.files-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background-color: var(--bg-card);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  flex: 1;
+  min-width: 180px;
+}
+
+.breadcrumb-segment {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.breadcrumb-segment:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--border);
+  user-select: none;
+}
+
+.files-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  height: 30px;
+}
+
+.files-table-container {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+}
+
+.files-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.files-table th {
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-size: 12px;
+}
+
+.files-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  color: var(--text-primary);
+}
+
+.files-table tr:hover td {
+  background-color: var(--bg-hover);
+}
+
+.file-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.file-link {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.file-dir-link {
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-dir-link:hover {
+  text-decoration: underline;
+}
+
+.col-size {
+  width: 90px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.col-date {
+  width: 140px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.col-action {
+  width: 70px;
+  text-align: right;
+}
+
+.files-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.btn-icon.muted {
+  opacity: 0.45;
+  filter: grayscale(1);
 }

@@ -211,16 +211,67 @@ def test_server_routes():
                     break
         assert b"persisted_terminal_data" in received2, f"Expected replayed data, got: {received2!r}"
 
-    # 7. Delete session
+    # 7. File transfer endpoints
+    # 7a. List files in session
+    res = client.get(f"/api/sessions/{session_id}/files", headers={"Authorization": "Bearer testtoken"})
+    assert res.status_code == 200
+    files_data = res.json()
+    assert "cwd" in files_data
+    assert "items" in files_data
+
+    # 7b. File upload to session
+    upload_content = b"tunminal_vibe_term_file_upload_test"
+    res = client.post(
+        f"/api/sessions/{session_id}/upload?filename=test_upload.txt",
+        headers={"Authorization": "Bearer testtoken"},
+        content=upload_content,
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+    assert res.json()["filename"] == "test_upload.txt"
+
+    # 7c. Verify uploaded file appears in file list
+    res = client.get(f"/api/sessions/{session_id}/files", headers={"Authorization": "Bearer testtoken"})
+    assert res.status_code == 200
+    assert any(item["name"] == "test_upload.txt" for item in res.json()["items"])
+
+    # 7d. Download uploaded file
+    res = client.get(
+        f"/api/sessions/{session_id}/download?path=test_upload.txt",
+        headers={"Authorization": "Bearer testtoken"},
+    )
+    assert res.status_code == 200
+    assert res.content == upload_content
+
+    # 7e. Path traversal security (must return 403)
+    res = client.get(
+        f"/api/sessions/{session_id}/download?path=../../../../etc/passwd",
+        headers={"Authorization": "Bearer testtoken"},
+    )
+    assert res.status_code == 403
+
+    res = client.get(
+        f"/api/sessions/{session_id}/files?path=../../../../etc",
+        headers={"Authorization": "Bearer testtoken"},
+    )
+    assert res.status_code == 403
+
+    # Clean up uploaded test file
+    import pathlib
+    uploaded_path = pathlib.Path(session.get_cwd()) / "test_upload.txt"
+    if uploaded_path.exists():
+        uploaded_path.unlink()
+
+    # 8. Delete session
     res = client.delete(f"/api/sessions/{session_id}", headers={"Authorization": "Bearer testtoken"})
     assert res.status_code == 200
 
-    # 8. WebSocket with invalid token
+    # 9. WebSocket with invalid token
     with pytest.raises(Exception):
         with client.websocket_connect(f"/ws/default?token=badtoken"):
             pass
 
-    # 9. WebSocket with valid token
+    # 10. WebSocket with valid token
     with client.websocket_connect(f"/ws/default?token=testtoken") as ws:
         # Send ping
         ws.send_text('{"type": "ping"}')

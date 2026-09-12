@@ -145,6 +145,107 @@ def create_app(
             raise HTTPException(status_code=404, detail="Session not found")
         return {"status": "closed", "session_id": session_id}
 
+    @app.get("/api/sessions/{session_id}/files")
+    async def list_session_files(session_id: str, request: Request, path: str = ""):
+        auth_manager.verify_request(request)
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        base_dir = Path(session.get_cwd()).resolve()
+        target_dir = (base_dir / path).resolve() if path else base_dir
+        try:
+            target_dir.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied: path outside session directory")
+
+        if not target_dir.exists() or not target_dir.is_dir():
+            raise HTTPException(status_code=404, detail="Directory not found")
+
+        items = []
+        try:
+            for entry in os.scandir(target_dir):
+                try:
+                    stat = entry.stat()
+                    items.append({
+                        "name": entry.name,
+                        "is_dir": entry.is_dir(),
+                        "size": stat.st_size if not entry.is_dir() else 0,
+                        "mtime": stat.st_mtime,
+                    })
+                except OSError:
+                    continue
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to list directory: {e}")
+
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        rel_path = str(target_dir.relative_to(base_dir))
+        return {
+            "session_id": session_id,
+            "cwd": str(base_dir),
+            "current_path": "" if rel_path == "." else rel_path,
+            "items": items,
+        }
+
+    @app.post("/api/sessions/{session_id}/upload")
+    async def upload_session_file(session_id: str, request: Request, filename: str, subpath: str = ""):
+        auth_manager.verify_request(request)
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        safe_filename = Path(filename).name
+        if not safe_filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+
+        base_dir = Path(session.get_cwd()).resolve()
+        target_dir = (base_dir / subpath).resolve() if subpath else base_dir
+        try:
+            target_dir.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied: path outside session directory")
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        dest_file = target_dir / safe_filename
+
+        try:
+            with open(dest_file, "wb") as f:
+                async for chunk in request.stream():
+                    f.write(chunk)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
+
+        rel_dest = str(dest_file.relative_to(base_dir))
+        return {
+            "status": "success",
+            "filename": safe_filename,
+            "path": rel_dest,
+            "size": dest_file.stat().st_size,
+        }
+
+    @app.get("/api/sessions/{session_id}/download")
+    async def download_session_file(session_id: str, request: Request, path: str):
+        auth_manager.verify_request(request)
+        session = session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        base_dir = Path(session.get_cwd()).resolve()
+        target_file = (base_dir / path).resolve()
+        try:
+            target_file.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied: path outside session directory")
+
+        if not target_file.exists() or not target_file.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        return FileResponse(
+            str(target_file),
+            filename=target_file.name,
+            media_type="application/octet-stream",
+        )
+
     @app.websocket("/ws/{session_id}")
     async def websocket_endpoint(websocket: WebSocket, session_id: str):
         # 1. Authenticate WebSocket
@@ -186,7 +287,10 @@ def create_app(
                                 session.resize(cols, rows)
                                 continue
                             elif ctrl.get("type") == "ping":
-                                await websocket.send_text(json.dumps({"type": "pong"}))
+                                resp = {"type": "pong"}
+                                if "time" in ctrl:
+                                    resp["time"] = ctrl["time"]
+                                await websocket.send_text(json.dumps(resp))
                                 continue
                         except (json.JSONDecodeError, ValueError):
                             pass

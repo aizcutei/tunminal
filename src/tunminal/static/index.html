@@ -20,6 +20,7 @@
         <span class="logo-icon">⚡</span>
         <span class="logo-text">Tunminal</span>
         <span id="connection-status" class="status-badge connecting" title="Connecting..."></span>
+        <span id="latency-badge" class="latency-badge hidden" title="WebSocket Ping Latency">-- ms</span>
       </div>
 
       <!-- Tab Bar for Sessions -->
@@ -33,6 +34,8 @@
 
       <!-- Top Actions -->
       <div class="header-actions">
+        <button id="btn-bell-toggle" class="btn-icon" title="Terminal Bell & Notifications (Sound on)">🔔</button>
+        <button id="btn-files-modal" class="btn-icon" title="Session Files (Upload / Download)">📁</button>
         <button id="btn-theme-modal" class="btn-icon" title="Terminal Color Themes">🎨</button>
         <button id="btn-sessions-list" class="btn-icon" title="View Running Terminals">
           <span>📑</span>
@@ -87,6 +90,9 @@
       <div class="gui-bottom-panel">
         <div class="gui-quick-actions">
           <button type="button" class="chip-btn" data-chip="/help">/help</button>
+          <button type="button" class="chip-btn" data-chip="/review">/review</button>
+          <button type="button" class="chip-btn" data-chip="/bug">/bug</button>
+          <button type="button" class="chip-btn" data-chip="/commit">/commit</button>
           <button type="button" class="chip-btn" data-chip="/compact">/compact</button>
           <button type="button" class="chip-btn" data-chip="/cost">/cost</button>
           <button type="button" class="chip-btn" data-chip="/clear">/clear</button>
@@ -131,6 +137,15 @@
         <button id="btn-paste" class="key-btn" title="Paste clipboard">📋</button>
       </div>
     </section>
+
+    <!-- File Drop Overlay for Drag & Drop Uploads -->
+    <div id="file-drop-overlay" class="file-drop-overlay hidden">
+      <div class="file-drop-box">
+        <span class="file-drop-icon">📥</span>
+        <span class="file-drop-title">Drop files to upload</span>
+        <span class="file-drop-subtitle">Files will upload directly into active session directory</span>
+      </div>
+    </div>
   </div>
 
   <!-- New Session Dialog -->
@@ -155,6 +170,10 @@
         <div class="form-group">
           <label for="custom-cmd">Custom Command (optional):</label>
           <input type="text" id="custom-cmd" placeholder="e.g. htop, python, git status">
+        </div>
+        <div class="form-group">
+          <label for="custom-cwd">Working Directory (optional):</label>
+          <input type="text" id="custom-cwd" placeholder="e.g. /home/user/project or C:\project">
         </div>
         <div class="form-group">
           <label for="custom-name">Session Name (optional):</label>
@@ -227,6 +246,50 @@
     </div>
   </dialog>
 
+  <!-- Session Files Manager Dialog -->
+  <dialog id="files-modal" class="modal">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <div>
+          <h3>Session Files</h3>
+          <p id="files-current-dir" class="modal-subtitle">Working directory: /</p>
+        </div>
+        <button type="button" id="files-modal-close" class="btn-icon-plain">✕</button>
+      </div>
+
+      <div class="files-toolbar">
+        <div class="files-breadcrumb" id="files-breadcrumb">
+          <!-- Breadcrumb trail -->
+        </div>
+        <div class="files-actions">
+          <input type="file" id="files-hidden-input" multiple class="hidden">
+          <button type="button" id="btn-files-upload" class="btn btn-secondary btn-sm">⬆ Upload File</button>
+          <button type="button" id="btn-files-refresh" class="btn btn-secondary btn-sm" title="Refresh file list">🔄</button>
+        </div>
+      </div>
+
+      <div class="files-table-container">
+        <table class="files-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="col-size">Size</th>
+              <th class="col-date">Modified</th>
+              <th class="col-action">Action</th>
+            </tr>
+          </thead>
+          <tbody id="files-table-body">
+            <!-- Dynamically rendered file rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="files-modal-done" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Authentication Dialog (Shown only if token is missing) -->
   <dialog id="auth-modal" class="modal">
     <div class="modal-content">
@@ -244,7 +307,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/themes.js?v=3"></script>
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/themes.js?v=4"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>
