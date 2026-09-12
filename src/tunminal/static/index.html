@@ -9,7 +9,7 @@
   <title>Tunminal</title>
   
   <link rel="stylesheet" href="/static/vendor/xterm.css">
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
   <!-- Main Application Shell -->
@@ -141,6 +141,7 @@
     <!-- File Drop Overlay for Drag & Drop Uploads -->
     <div id="file-drop-overlay" class="file-drop-overlay hidden">
       <div class="file-drop-box">
+        <button type="button" id="file-drop-close" class="file-drop-close-btn" title="Dismiss overlay">✕</button>
         <span class="file-drop-icon">📥</span>
         <span class="file-drop-title">Drop files to upload</span>
         <span class="file-drop-subtitle">Files will upload directly into active session directory</span>
@@ -307,7 +308,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/themes.js?v=4"></script>
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/themes.js?v=5"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

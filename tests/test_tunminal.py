@@ -271,17 +271,20 @@ def test_server_routes():
         with client.websocket_connect(f"/ws/default?token=badtoken"):
             pass
 
-    # 10. WebSocket with valid token
+    # 10. WebSocket with valid token and nonce ping
     with client.websocket_connect(f"/ws/default?token=testtoken") as ws:
-        # Send ping
-        ws.send_text('{"type": "ping"}')
+        # Send ping with time and nonce
+        ws.send_text('{"type": "ping", "time": 1726000000, "nonce": "test_nonce_123"}')
         found_pong = False
         for _ in range(30):
             msg = receive_with_timeout(ws, timeout=0.5)
             if msg and "text" in msg and msg["text"] and "pong" in msg["text"]:
-                found_pong = True
-                break
-        assert found_pong, "Expected pong response from websocket"
+                import json
+                data = json.loads(msg["text"])
+                if data.get("type") == "pong" and data.get("nonce") == "test_nonce_123" and data.get("time") == 1726000000:
+                    found_pong = True
+                    break
+        assert found_pong, "Expected pong response with matched nonce and time"
 
     mgr.close_all()
 

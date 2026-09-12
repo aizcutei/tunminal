@@ -290,6 +290,8 @@ def create_app(
                                 resp = {"type": "pong"}
                                 if "time" in ctrl:
                                     resp["time"] = ctrl["time"]
+                                if "nonce" in ctrl:
+                                    resp["nonce"] = ctrl["nonce"]
                                 await websocket.send_text(json.dumps(resp))
                                 continue
                         except (json.JSONDecodeError, ValueError):

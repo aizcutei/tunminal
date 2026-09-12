@@ -7,8 +7,6 @@
   let fitAddon = null;
   let isCtrlActive = false;
   let isAltActive = false;
-  let reconnectTimer = null;
-  let pingInterval = null;
   let sessionPollTimer = null;
   let toastTimer = null;
   let activeSessions = [];
@@ -83,10 +81,9 @@
   }
 
   function handleAuthFailure(reason = "Authentication required or token expired") {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
+    reconnectController.reset();
+    heartbeatController.stop();
+    ptyCoalescer.reset();
     if (activeSocket) {
       activeSocket.onclose = null;
       activeSocket.close();
@@ -130,6 +127,7 @@
       setupKeypad();
       setupSessionsManager();
       setupGuiComposer();
+      setupNetworkWakeListeners();
     }
     await loadPresetsAndInfo();
     await refreshSessions();
@@ -1328,16 +1326,244 @@
     }
   }
 
-  // 9. WebSocket Connection & Switching
+  // 9. WebSocket Connection & Switching (Optimized with vibe-term connectivity patterns)
+  const ptyCoalescer = {
+    chunks: [],
+    totalBytes: 0,
+    timer: null,
+    delayMs: 4,
+    maxBytes: 32768,
+
+    push(u8) {
+      this.chunks.push(u8);
+      this.totalBytes += u8.byteLength;
+      if (this.totalBytes >= this.maxBytes) {
+        this.flush();
+      } else if (!this.timer) {
+        this.timer = setTimeout(() => this.flush(), this.delayMs);
+      }
+    },
+
+    flush() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      if (this.chunks.length === 0) return;
+
+      let merged;
+      if (this.chunks.length === 1) {
+        merged = this.chunks[0];
+      } else {
+        merged = new Uint8Array(this.totalBytes);
+        let offset = 0;
+        for (const c of this.chunks) {
+          merged.set(c, offset);
+          offset += c.byteLength;
+        }
+      }
+      this.chunks = [];
+      this.totalBytes = 0;
+
+      if (term) {
+        term.write(merged);
+      }
+      const textChunk = utf8Decoder.decode(merged);
+      if (textChunk) {
+        checkOscNotifications(textChunk);
+        const session = getActiveSession();
+        if (isAiAgentSession(session)) {
+          guiParser.appendStream(textChunk);
+        }
+      }
+    },
+
+    reset() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      this.chunks = [];
+      this.totalBytes = 0;
+    },
+  };
+
+  const heartbeatController = {
+    intervalId: null,
+    pongDeadlineTimer: null,
+    activeNonce: null,
+    rttHistory: [],
+    pingIntervalMs: 3500,
+    pongDeadlineMs: 6000,
+    lastPingTime: 0,
+
+    start(ws) {
+      this.stop();
+      this.rttHistory = [];
+
+      this.intervalId = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          this.sendPing(ws);
+        }
+      }, this.pingIntervalMs);
+
+      // Send initial ping immediately
+      this.sendPing(ws);
+    },
+
+    sendPing(ws, deadlineMs) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      this.lastPingTime = now;
+      const nonce = "p_" + now + "_" + Math.random().toString(36).substring(2, 7);
+      this.activeNonce = nonce;
+
+      if (this.pongDeadlineTimer) {
+        clearTimeout(this.pongDeadlineTimer);
+        this.pongDeadlineTimer = null;
+      }
+      const timeout = deadlineMs || this.pongDeadlineMs;
+      this.pongDeadlineTimer = setTimeout(() => {
+        if (ws === activeSocket && ws.readyState === WebSocket.OPEN) {
+          console.warn(`[Tunminal] Heartbeat pong deadline exceeded (${timeout}ms). Terminating dead socket.`);
+          try {
+            ws.close();
+          } catch (e) {}
+        }
+      }, timeout);
+
+      try {
+        ws.send(JSON.stringify({ type: "ping", time: now, nonce }));
+      } catch (e) {
+        console.warn("[Tunminal] Failed to send ping:", e);
+      }
+    },
+
+    handlePong(parsed) {
+      if (!parsed) return;
+      if (!this.activeNonce || !parsed.nonce || parsed.nonce === this.activeNonce) {
+        if (this.pongDeadlineTimer) {
+          clearTimeout(this.pongDeadlineTimer);
+          this.pongDeadlineTimer = null;
+        }
+        this.activeNonce = null;
+
+        if (parsed.time) {
+          const rtt = Math.max(0, Date.now() - parsed.time);
+          this.rttHistory.push(rtt);
+          if (this.rttHistory.length > 5) {
+            this.rttHistory.shift();
+          }
+          const sorted = [...this.rttHistory].sort((a, b) => a - b);
+          const medianRtt = sorted[Math.floor(sorted.length / 2)];
+          updateLatencyBadge(medianRtt);
+        }
+      }
+    },
+
+    probe(ws, fastDeadline = 2500) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        this.sendPing(ws, fastDeadline);
+      }
+    },
+
+    stop() {
+      if (this.intervalId) {
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+      }
+      if (this.pongDeadlineTimer) {
+        clearTimeout(this.pongDeadlineTimer);
+        this.pongDeadlineTimer = null;
+      }
+      this.activeNonce = null;
+    },
+  };
+
+  const reconnectController = {
+    timer: null,
+    attempts: 0,
+    baseDelay: 1000,
+    maxDelay: 15000,
+
+    reset() {
+      this.attempts = 0;
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+    },
+
+    resetTimer() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+    },
+
+    schedule(sessionId, callback) {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      this.attempts++;
+      const exp = Math.pow(1.5, Math.min(this.attempts - 1, 8));
+      const jitter = 0.8 + Math.random() * 0.4;
+      const delay = Math.min(this.maxDelay, Math.round(this.baseDelay * exp * jitter));
+
+      statusEl.className = "status-badge connecting";
+      statusEl.title = `Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${this.attempts})...`;
+
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        if (currentSessionId === sessionId) {
+          callback();
+        }
+      }, delay);
+    },
+  };
+
+  function setupNetworkWakeListeners() {
+    const handleWake = () => {
+      if (!currentSessionId) return;
+
+      if (!activeSocket || activeSocket.readyState === WebSocket.CLOSED || activeSocket.readyState === WebSocket.CLOSING) {
+        console.log("[Tunminal] Network wake detected with disconnected socket, reconnecting immediately...");
+        reconnectController.reset();
+        connectWebSocket(currentSessionId);
+      } else if (activeSocket.readyState === WebSocket.OPEN) {
+        console.log("[Tunminal] Network wake detected, sending urgent probe ping...");
+        heartbeatController.probe(activeSocket, 2500);
+      }
+    };
+
+    window.addEventListener("online", handleWake);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        handleWake();
+      }
+    });
+    window.addEventListener("focus", () => {
+      if (Date.now() - heartbeatController.lastPingTime > 2000) {
+        handleWake();
+      }
+    });
+  }
+
   function switchSession(sessionId) {
-    if (currentSessionId === sessionId && activeSocket) return;
+    if (currentSessionId === sessionId && activeSocket && activeSocket.readyState === WebSocket.OPEN) return;
     currentSessionId = sessionId;
     localStorage.setItem("tunminal_active_session", sessionId);
 
     if (activeSocket) {
+      activeSocket.onclose = null;
       activeSocket.close();
       activeSocket = null;
     }
+    reconnectController.reset();
+    heartbeatController.stop();
+    ptyCoalescer.reset();
+
     if (term) {
       term.reset();
     }
@@ -1352,14 +1578,9 @@
   }
 
   function connectWebSocket(sessionId) {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (pingInterval) {
-      clearInterval(pingInterval);
-      pingInterval = null;
-    }
+    reconnectController.resetTimer();
+    heartbeatController.stop();
+    ptyCoalescer.reset();
 
     statusEl.className = "status-badge connecting";
     statusEl.title = "Connecting...";
@@ -1373,6 +1594,7 @@
 
     ws.onopen = () => {
       if (ws !== activeSocket) return;
+      reconnectController.reset();
       statusEl.className = "status-badge connected";
       statusEl.title = "Connected";
 
@@ -1381,29 +1603,20 @@
       }
       notifyTerminalResize();
 
-      pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "ping", time: Date.now() }));
-        }
-      }, 3000);
-      ws.send(JSON.stringify({ type: "ping", time: Date.now() }));
+      heartbeatController.start(ws);
     };
 
     ws.onmessage = (event) => {
       if (ws !== activeSocket) return;
-      let textChunk = "";
 
       if (event.data instanceof ArrayBuffer) {
-        const u8 = new Uint8Array(event.data);
-        term.write(u8);
-        textChunk = utf8Decoder.decode(u8);
+        ptyCoalescer.push(new Uint8Array(event.data));
       } else if (typeof event.data === "string") {
         if (event.data.includes('"pong"')) {
           try {
             const parsed = JSON.parse(event.data);
-            if (parsed.type === "pong" && parsed.time) {
-              const rtt = Math.max(0, Date.now() - parsed.time);
-              updateLatencyBadge(rtt);
+            if (parsed.type === "pong") {
+              heartbeatController.handlePong(parsed);
             }
           } catch (e) {}
           return;
@@ -1413,24 +1626,21 @@
           return;
         }
         term.write(event.data);
-        textChunk = event.data;
-      }
-
-      if (textChunk) {
-        checkOscNotifications(textChunk);
-        const session = getActiveSession();
-        if (isAiAgentSession(session)) {
-          guiParser.appendStream(textChunk);
+        const textChunk = event.data;
+        if (textChunk) {
+          checkOscNotifications(textChunk);
+          const session = getActiveSession();
+          if (isAiAgentSession(session)) {
+            guiParser.appendStream(textChunk);
+          }
         }
       }
     };
 
     ws.onclose = async (event) => {
       if (ws !== activeSocket) return;
-      if (pingInterval) {
-        clearInterval(pingInterval);
-        pingInterval = null;
-      }
+      heartbeatController.stop();
+      ptyCoalescer.flush();
       resetLatencyBadge();
       statusEl.className = "status-badge disconnected";
       statusEl.title = "Disconnected";
@@ -1450,7 +1660,7 @@
         return;
       }
 
-      // 3. For any abnormal closure (code 1006): check whether token was rejected
+      // 3. Abnormal closure: check token validity
       if (token) {
         try {
           const checkRes = await fetch("/api/info", {
@@ -1461,15 +1671,15 @@
             return;
           }
         } catch (e) {
-          // Network offline or server rebooting, safe to wait and retry below
+          // Network offline or server rebooting
         }
       }
 
-      reconnectTimer = setTimeout(() => {
+      reconnectController.schedule(sessionId, () => {
         if (currentSessionId === sessionId) {
           connectWebSocket(sessionId);
         }
-      }, 2500);
+      });
     };
 
     ws.onerror = () => {
@@ -1801,8 +2011,40 @@
   }
 
   function setupFileTransfer() {
+    if (fileDropOverlay) {
+      fileDropOverlay.classList.add("hidden");
+    }
+
+    const fileDropClose = document.getElementById("file-drop-close");
+    if (fileDropClose) {
+      fileDropClose.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter = 0;
+        if (fileDropOverlay) fileDropOverlay.classList.add("hidden");
+      });
+    }
+
+    if (fileDropOverlay) {
+      fileDropOverlay.addEventListener("click", (e) => {
+        if (e.target === fileDropOverlay || e.target.closest("#file-drop-close")) {
+          dragCounter = 0;
+          fileDropOverlay.classList.add("hidden");
+        }
+      });
+    }
+
     let dragCounter = 0;
     window.addEventListener("dragenter", (e) => {
+      // Don't show drop overlay unless drag contains actual files (prevents touch/scroll false triggers)
+      if (e.dataTransfer && e.dataTransfer.types) {
+        const types = Array.from(e.dataTransfer.types);
+        if (!types.includes("Files")) {
+          return;
+        }
+      } else {
+        return;
+      }
       e.preventDefault();
       dragCounter++;
       if (currentSessionId && fileDropOverlay) {
@@ -1811,6 +2053,12 @@
     });
 
     window.addEventListener("dragover", (e) => {
+      if (e.dataTransfer && e.dataTransfer.types) {
+        const types = Array.from(e.dataTransfer.types);
+        if (!types.includes("Files")) {
+          return;
+        }
+      }
       e.preventDefault();
     });
 
