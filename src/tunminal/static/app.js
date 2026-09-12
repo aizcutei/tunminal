@@ -24,6 +24,10 @@
   // DOM Elements
   const statusEl = document.getElementById("connection-status");
   const latencyBadge = document.getElementById("latency-badge");
+  const sidebarDrawer = document.getElementById("sidebar-drawer");
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+  const drawerConnStatus = document.getElementById("drawer-connection-status");
+  const drawerLatencyBadge = document.getElementById("drawer-latency-badge");
   const btnMenuDrawer = document.getElementById("btn-menu-drawer");
   const headerActiveSession = document.getElementById("header-active-session");
   const sessionTitleText = document.getElementById("session-title-text");
@@ -88,6 +92,17 @@
     startApp();
   }
 
+  function updateConnectionStatus(className, title = "") {
+    if (statusEl) {
+      statusEl.className = className;
+      if (title) statusEl.title = title;
+    }
+    if (drawerConnStatus) {
+      drawerConnStatus.className = className;
+      if (title) drawerConnStatus.title = title;
+    }
+  }
+
   function handleAuthFailure(reason = "Authentication required or token expired") {
     reconnectController.reset();
     heartbeatController.stop();
@@ -99,8 +114,7 @@
     }
     localStorage.removeItem("tunminal_token");
     token = "";
-    statusEl.className = "status-badge disconnected";
-    statusEl.title = "Unauthorized";
+    updateConnectionStatus("status-badge disconnected", "Unauthorized");
 
     if (term) {
       term.writeln(`\r\n\x1b[31m[${reason}. Please enter token.]\x1b[0m\r\n`);
@@ -134,6 +148,7 @@
       try { setupViewportHandler(); } catch (e) { console.error("setupViewportHandler error:", e); }
       try { setupKeypad(); } catch (e) { console.error("setupKeypad error:", e); }
       try { setupSessionsManager(); } catch (e) { console.error("setupSessionsManager error:", e); }
+      try { setupDrawer(); } catch (e) { console.error("setupDrawer error:", e); }
       try { setupGuiComposer(); } catch (e) { console.error("setupGuiComposer error:", e); }
       try { setupNetworkWakeListeners(); } catch (e) { console.error("setupNetworkWakeListeners error:", e); }
     }
@@ -415,34 +430,39 @@
   }
 
   function renderThemesGrid() {
-    const themesGrid = document.getElementById("themes-grid");
+    const grids = [
+      document.getElementById("themes-grid"),
+      document.getElementById("drawer-themes-grid"),
+    ].filter(Boolean);
     const themes = window.TERMINAL_THEMES || FALLBACK_THEMES;
-    if (!themesGrid || !themes) return;
-    themesGrid.innerHTML = "";
+    if (grids.length === 0 || !themes) return;
 
-    Object.entries(themes).forEach(([id, t]) => {
-      const card = document.createElement("div");
-      card.className = `theme-card ${id === currentTheme ? "active" : ""}`;
-      card.innerHTML = `
-        <div class="theme-card-preview" style="background-color: ${t.previewBg}">
-          <span style="color: ${t.previewFg}; font-weight: 700; font-family: monospace;">>_ tunminal</span>
-          <div class="theme-swatches">
-            <span class="swatch-dot" style="background-color: ${t.theme.red}"></span>
-            <span class="swatch-dot" style="background-color: ${t.theme.green}"></span>
-            <span class="swatch-dot" style="background-color: ${t.theme.yellow}"></span>
-            <span class="swatch-dot" style="background-color: ${t.theme.blue}"></span>
-            <span class="swatch-dot" style="background-color: ${t.theme.cyan}"></span>
+    grids.forEach((themesGrid) => {
+      themesGrid.innerHTML = "";
+      Object.entries(themes).forEach(([id, t]) => {
+        const card = document.createElement("div");
+        card.className = `theme-card ${id === currentTheme ? "active" : ""}`;
+        card.innerHTML = `
+          <div class="theme-card-preview" style="background-color: ${t.previewBg}">
+            <span style="color: ${t.previewFg}; font-weight: 700; font-family: monospace;">>_ tunminal</span>
+            <div class="theme-swatches">
+              <span class="swatch-dot" style="background-color: ${t.theme.red}"></span>
+              <span class="swatch-dot" style="background-color: ${t.theme.green}"></span>
+              <span class="swatch-dot" style="background-color: ${t.theme.yellow}"></span>
+              <span class="swatch-dot" style="background-color: ${t.theme.blue}"></span>
+              <span class="swatch-dot" style="background-color: ${t.theme.cyan}"></span>
+            </div>
           </div>
-        </div>
-        <div class="theme-name">${escapeHtml(t.name)}</div>
-      `;
+          <div class="theme-name">${escapeHtml(t.name)}</div>
+        `;
 
-      card.addEventListener("click", () => {
-        applyTheme(id);
-        renderThemesGrid();
+        card.addEventListener("click", () => {
+          applyTheme(id);
+          renderThemesGrid();
+        });
+
+        themesGrid.appendChild(card);
       });
-
-      themesGrid.appendChild(card);
     });
   }
 
@@ -473,10 +493,13 @@
   }
 
   function updateFontSizeDisplay() {
-    const display = document.getElementById("font-size-display");
-    if (display) {
-      display.textContent = `${currentFontSize} px`;
-    }
+    const displays = [
+      document.getElementById("font-size-display"),
+      document.getElementById("drawer-font-size-val"),
+    ].filter(Boolean);
+    displays.forEach((d) => {
+      d.textContent = `${currentFontSize} px`;
+    });
     document.querySelectorAll(".btn-preset").forEach((btn) => {
       const sz = parseInt(btn.dataset.size, 10);
       btn.classList.toggle("active", sz === currentFontSize);
@@ -503,6 +526,15 @@
     }
     if (btnInc) {
       btnInc.addEventListener("click", () => setFontSize(currentFontSize + 1));
+    }
+
+    const drawerDec = document.getElementById("drawer-btn-font-dec");
+    const drawerInc = document.getElementById("drawer-btn-font-inc");
+    if (drawerDec) {
+      drawerDec.addEventListener("click", () => setFontSize(currentFontSize - 1));
+    }
+    if (drawerInc) {
+      drawerInc.addEventListener("click", () => setFontSize(currentFontSize + 1));
     }
 
     document.querySelectorAll(".btn-preset").forEach((btn) => {
@@ -1432,6 +1464,7 @@
       const sessions = await res.json();
       activeSessions = sessions;
       renderTabs(sessions);
+      renderDrawerSessionsList(sessions);
       updateBadge(sessions.length);
       updateViewModeVisibility();
 
@@ -1464,6 +1497,7 @@
       const sessions = await res.json();
       activeSessions = sessions;
       renderTabs(sessions);
+      renderDrawerSessionsList(sessions);
       updateBadge(sessions.length);
       updateViewModeVisibility();
       if (sessionsModal && sessionsModal.open) {
@@ -1800,8 +1834,7 @@
     heartbeatController.stop();
     ptyCoalescer.reset();
 
-    statusEl.className = "status-badge connecting";
-    statusEl.title = "Connecting...";
+    updateConnectionStatus("status-badge connecting", "Connecting...");
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}?token=${encodeURIComponent(token)}`;
@@ -1813,8 +1846,7 @@
     ws.onopen = () => {
       if (ws !== activeSocket) return;
       reconnectController.reset();
-      statusEl.className = "status-badge connected";
-      statusEl.title = "Connected";
+      updateConnectionStatus("status-badge connected", "Connected");
 
       if (fitAddon) {
         fitAddon.fit();
@@ -1836,17 +1868,19 @@
             if (parsed.type === "pong") {
               heartbeatController.handlePong(parsed);
             }
-          } catch (e) {}
+          } catch (e) {
+            // Non-json message
+          }
           return;
         }
-        if (event.data.includes('"auth_error"')) {
-          handleAuthFailure("Authentication failed: invalid token");
-          return;
-        }
-        term.write(event.data);
+
         const textChunk = event.data;
+        if (term) term.write(textChunk);
         if (textChunk) {
           checkOscNotifications(textChunk);
+        }
+
+        if (currentViewMode === "gui") {
           const session = getActiveSession();
           if (isAiAgentSession(session)) {
             guiParser.appendStream(textChunk);
@@ -1860,8 +1894,7 @@
       heartbeatController.stop();
       ptyCoalescer.flush();
       resetLatencyBadge();
-      statusEl.className = "status-badge disconnected";
-      statusEl.title = "Disconnected";
+      updateConnectionStatus("status-badge disconnected", "Disconnected");
 
       // 1. Explicit 4401 or auth rejection
       if (event.code === 4401) {
@@ -1901,31 +1934,35 @@
     };
 
     ws.onerror = () => {
-      statusEl.className = "status-badge disconnected";
+      updateConnectionStatus("status-badge disconnected", "Connection error");
     };
   }
 
   // 10. Latency Monitoring & Badge
   function updateLatencyBadge(latencyMs) {
-    if (!latencyBadge) return;
-    latencyBadge.classList.remove("hidden");
-    latencyBadge.textContent = `${latencyMs} ms`;
-    latencyBadge.classList.remove("good", "medium", "slow");
-    if (latencyMs < 100) {
-      latencyBadge.classList.add("good");
-    } else if (latencyMs < 250) {
-      latencyBadge.classList.add("medium");
-    } else {
-      latencyBadge.classList.add("slow");
-    }
-    latencyBadge.title = `WebSocket Ping Latency: ${latencyMs}ms`;
+    const badges = [latencyBadge, drawerLatencyBadge].filter(Boolean);
+    badges.forEach((b) => {
+      b.classList.remove("hidden");
+      b.textContent = `${latencyMs} ms`;
+      b.classList.remove("good", "medium", "slow");
+      if (latencyMs < 100) {
+        b.classList.add("good");
+      } else if (latencyMs < 250) {
+        b.classList.add("medium");
+      } else {
+        b.classList.add("slow");
+      }
+      b.title = `WebSocket Ping Latency: ${latencyMs}ms`;
+    });
   }
 
   function resetLatencyBadge() {
-    if (!latencyBadge) return;
-    latencyBadge.textContent = "-- ms";
-    latencyBadge.classList.remove("good", "medium", "slow");
-    latencyBadge.classList.add("hidden");
+    const badges = [latencyBadge, drawerLatencyBadge].filter(Boolean);
+    badges.forEach((b) => {
+      b.textContent = "-- ms";
+      b.classList.remove("good", "medium", "slow");
+      b.classList.add("hidden");
+    });
   }
 
   // 11. Terminal Bell (Web Audio API) & OSC Notifications
@@ -2226,6 +2263,69 @@
         filesTableBody.appendChild(tr);
       });
     }
+
+    // Render into drawer files list
+    const drawerBreadcrumb = document.getElementById("drawer-files-breadcrumb");
+    const drawerFilesList = document.getElementById("drawer-files-list");
+    if (drawerBreadcrumb) {
+      drawerBreadcrumb.textContent = data.current_path ? `/${data.current_path}` : "/";
+    }
+    if (drawerFilesList) {
+      drawerFilesList.innerHTML = "";
+      if (data.current_path) {
+        const parentParts = data.current_path.split("/").filter(Boolean);
+        parentParts.pop();
+        const parentPath = parentParts.join("/");
+        const upItem = document.createElement("div");
+        upItem.className = "drawer-file-item";
+        upItem.innerHTML = `
+          <div class="drawer-file-info">
+            <span class="drawer-file-icon"><i class="fa-regular fa-folder"></i></span>
+            <span class="drawer-file-name">..</span>
+          </div>
+        `;
+        upItem.addEventListener("click", () => loadSessionFiles(sessionId, parentPath));
+        drawerFilesList.appendChild(upItem);
+      }
+
+      if (!data.items || data.items.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.style.cssText = "text-align: center; padding: 14px; color: var(--text-muted); font-size: 12px;";
+        emptyDiv.textContent = "No files found";
+        drawerFilesList.appendChild(emptyDiv);
+      } else {
+        data.items.forEach((item) => {
+          const itemDiv = document.createElement("div");
+          itemDiv.className = "drawer-file-item";
+          const itemRelPath = data.current_path ? `${data.current_path}/${item.name}` : item.name;
+          const icon = item.is_dir ? '<i class="fa-regular fa-folder"></i>' : '<i class="fa-regular fa-file-lines"></i>';
+          const sizeStr = item.is_dir ? "" : formatBytes(item.size);
+
+          itemDiv.innerHTML = `
+            <div class="drawer-file-info">
+              <span class="drawer-file-icon">${icon}</span>
+              <span class="drawer-file-name">${escapeHtml(item.name)}</span>
+              ${sizeStr ? `<span class="drawer-file-size">${sizeStr}</span>` : ""}
+            </div>
+            ${!item.is_dir ? '<button type="button" class="btn-icon-plain btn-download" title="Download"><i class="fa-solid fa-download" style="font-size: 11px;"></i></button>' : ""}
+          `;
+
+          if (item.is_dir) {
+            itemDiv.addEventListener("click", () => loadSessionFiles(sessionId, itemRelPath));
+          } else {
+            const btnDl = itemDiv.querySelector(".btn-download");
+            if (btnDl) {
+              btnDl.addEventListener("click", (e) => {
+                e.stopPropagation();
+                downloadFile(sessionId, itemRelPath, item.name);
+              });
+            }
+            itemDiv.addEventListener("click", () => downloadFile(sessionId, itemRelPath, item.name));
+          }
+          drawerFilesList.appendChild(itemDiv);
+        });
+      }
+    }
   }
 
   function setupFileTransfer() {
@@ -2347,6 +2447,21 @@
         }
       });
     }
+
+    const drawerBtnFilesUpload = document.getElementById("drawer-btn-files-upload");
+    const drawerBtnFilesRefresh = document.getElementById("drawer-btn-files-refresh");
+    if (drawerBtnFilesUpload && filesHiddenInput) {
+      drawerBtnFilesUpload.addEventListener("click", () => {
+        filesHiddenInput.click();
+      });
+    }
+    if (drawerBtnFilesRefresh) {
+      drawerBtnFilesRefresh.addEventListener("click", () => {
+        if (currentSessionId) {
+          loadSessionFiles(currentSessionId, currentFilesPath);
+        }
+      });
+    }
   }
 
   // 13. Sessions Manager Dialog
@@ -2358,7 +2473,11 @@
 
     if (btnSessionsList) {
       btnSessionsList.addEventListener("click", async () => {
-        await openSessionsModal();
+        if (window.innerWidth < 768) {
+          openSidebarDrawer("terminals");
+        } else {
+          await openSessionsModal();
+        }
       });
     }
 
@@ -2464,6 +2583,184 @@
     });
   }
 
+  // 14. Slide-Out Sidebar Drawer (vibe-term Style)
+  function renderDrawerSessionsList(sessions) {
+    const container = document.getElementById("drawer-sessions-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!sessions || sessions.length === 0) {
+      container.innerHTML = `<div style="text-align:center; padding: 18px; color: var(--text-muted); font-size: 12px;">No active terminals found.</div>`;
+      return;
+    }
+
+    sessions.forEach((s) => {
+      const isCurrent = s.id === currentSessionId;
+      const card = document.createElement("div");
+      card.className = `drawer-session-card ${isCurrent ? "active" : ""}`;
+      const uptimeSec = Math.floor(Date.now() / 1000 - s.created_at);
+      const uptimeStr = formatDuration(uptimeSec);
+
+      card.innerHTML = `
+        <div class="drawer-session-card-header">
+          <div class="drawer-session-title">
+            <span class="status-dot ${s.alive ? "alive" : "dead"}"></span>
+            <span>${escapeHtml(s.name || s.id)}</span>
+          </div>
+          ${isCurrent ? '<span class="drawer-session-badge">Active</span>' : ""}
+        </div>
+        <div class="drawer-session-meta">
+          <span><i class="fa-solid fa-terminal" style="font-size: 10px; margin-right: 3px;"></i>${escapeHtml(s.command || "shell")}</span>
+          <span>PID: ${s.pid || "-"}</span>
+          <span>${uptimeStr}</span>
+        </div>
+        <div class="drawer-session-actions">
+          <button type="button" class="btn btn-xs btn-rename" data-action="rename"><i class="fa-solid fa-pen" style="font-size: 9px;"></i> Rename</button>
+          <button type="button" class="btn btn-xs btn-danger" data-action="delete"><i class="fa-solid fa-xmark" style="font-size: 9px;"></i> Kill</button>
+        </div>
+      `;
+
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;
+        switchSession(s.id);
+        closeSidebarDrawer();
+      });
+
+      card.querySelector('[data-action="rename"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const newName = prompt("Enter new name for this session:", s.name);
+        if (newName && newName.trim() && newName.trim() !== s.name) {
+          try {
+            await apiFetch(`/api/sessions/${s.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: newName.trim() }),
+            });
+            await refreshSessions();
+          } catch (err) {
+            alert("Failed to rename session: " + err.message);
+          }
+        }
+      });
+
+      card.querySelector('[data-action="delete"]').addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (confirm(`Terminate session "${s.name}" (PID ${s.pid})?`)) {
+          await closeSession(s.id);
+        }
+      });
+
+      container.appendChild(card);
+    });
+  }
+
+  function isSidebarDrawerOpen() {
+    return sidebarDrawer && sidebarDrawer.classList.contains("open");
+  }
+
+  function openSidebarDrawer(tabName = "terminals") {
+    if (!sidebarDrawer) return;
+    sidebarDrawer.classList.add("open");
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove("hidden");
+    switchDrawerTab(tabName);
+    refreshSessions();
+  }
+
+  function closeSidebarDrawer() {
+    if (!sidebarDrawer) return;
+    sidebarDrawer.classList.remove("open");
+    if (sidebarBackdrop) sidebarBackdrop.classList.add("hidden");
+  }
+
+  function switchDrawerTab(tabName) {
+    document.querySelectorAll(".sidebar-tab-trigger").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll(".sidebar-tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.id === `drawer-tab-${tabName}`);
+    });
+
+    if (tabName === "files" && currentSessionId) {
+      loadSessionFiles(currentSessionId, currentFilesPath || "");
+    } else if (tabName === "appearance") {
+      renderThemesGrid();
+      updateFontSizeDisplay();
+    } else if (tabName === "terminals") {
+      renderDrawerSessionsList(activeSessions);
+    }
+  }
+
+  function setupDrawer() {
+    if (sidebarBackdrop) {
+      sidebarBackdrop.addEventListener("click", closeSidebarDrawer);
+    }
+
+    const closeBtn = document.getElementById("drawer-btn-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", closeSidebarDrawer);
+    }
+
+    const drawerNewSessionBtn = document.getElementById("drawer-btn-new-session");
+    if (drawerNewSessionBtn) {
+      drawerNewSessionBtn.addEventListener("click", () => {
+        closeSidebarDrawer();
+        if (newSessionModal) newSessionModal.showModal();
+      });
+    }
+
+    const drawerThemeBtn = document.getElementById("drawer-btn-theme");
+    if (drawerThemeBtn) {
+      drawerThemeBtn.addEventListener("click", () => {
+        switchDrawerTab("appearance");
+      });
+    }
+
+    const drawerDisconnectBtn = document.getElementById("drawer-btn-disconnect");
+    if (drawerDisconnectBtn) {
+      drawerDisconnectBtn.addEventListener("click", () => {
+        if (confirm("Disconnect and clear saved access token?")) {
+          handleAuthFailure("Disconnected by user");
+        }
+      });
+    }
+
+    // Segmented tab buttons
+    document.querySelectorAll(".sidebar-tab-trigger").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab;
+        if (tab) switchDrawerTab(tab);
+      });
+    });
+
+    // Touch swipe left to close drawer
+    if (sidebarDrawer) {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      sidebarDrawer.addEventListener("touchstart", (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      sidebarDrawer.addEventListener("touchmove", (e) => {
+        if (!touchStartX) return;
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        const diffX = touchStartX - currentX;
+        const diffY = Math.abs(touchStartY - currentY);
+        if (diffX > 45 && diffY < 50) {
+          closeSidebarDrawer();
+          touchStartX = 0;
+        }
+      }, { passive: true });
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && isSidebarDrawerOpen()) {
+        closeSidebarDrawer();
+      }
+    });
+  }
+
   // 11. Mobile Virtual Keypad & Shortcuts
   function setupKeypad() {
     if (modCtrlBtn) {
@@ -2562,15 +2859,13 @@
 
     // Mobile Drawer & Sessions Click Handlers
     if (btnMenuDrawer) {
-      btnMenuDrawer.addEventListener("click", async () => {
-        await refreshSessions();
-        if (sessionsModal) sessionsModal.showModal();
+      btnMenuDrawer.addEventListener("click", () => {
+        openSidebarDrawer("terminals");
       });
     }
     if (headerActiveSession) {
-      headerActiveSession.addEventListener("click", async () => {
-        await refreshSessions();
-        if (sessionsModal) sessionsModal.showModal();
+      headerActiveSession.addEventListener("click", () => {
+        openSidebarDrawer("terminals");
       });
     }
 
@@ -2608,6 +2903,10 @@
   }
 
   function handleSpecialKey(key) {
+    if (key === "Escape" && isSidebarDrawerOpen()) {
+      closeSidebarDrawer();
+      return;
+    }
     let seq = "";
     switch (key) {
       case "Escape":

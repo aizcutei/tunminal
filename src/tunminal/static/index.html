@@ -10,9 +10,110 @@
   
   <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm.css">
-  <link rel="stylesheet" href="/static/style.css?v=15">
+  <link rel="stylesheet" href="/static/style.css?v=17">
 </head>
 <body>
+  <!-- Slide-Out Sidebar Drawer (vibe-term Style) -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+  <aside id="sidebar-drawer" class="sidebar-drawer" aria-label="Sidebar Drawer">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <span class="logo-icon"><i class="fa-solid fa-bolt"></i></span>
+        <span class="sidebar-brand-name">Tunminal</span>
+        <span id="drawer-connection-status" class="status-badge connecting" title="Connecting..."></span>
+        <span id="drawer-latency-badge" class="latency-badge hidden" title="WebSocket Ping Latency">-- ms</span>
+      </div>
+      <div class="sidebar-header-actions">
+        <button type="button" id="drawer-btn-theme" class="btn-icon-plain" title="Appearance & Settings"><i class="fa-solid fa-palette"></i></button>
+        <button type="button" id="drawer-btn-close" class="btn-icon-plain" title="Close Drawer"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+
+    <!-- Segmented Tab Triggers -->
+    <div class="sidebar-tabs-nav">
+      <button type="button" class="sidebar-tab-trigger active" data-tab="terminals">
+        <i class="fa-solid fa-table-cells-large"></i>
+        <span>Terminals</span>
+      </button>
+      <button type="button" class="sidebar-tab-trigger" data-tab="files">
+        <i class="fa-regular fa-folder-closed"></i>
+        <span>Files</span>
+      </button>
+      <button type="button" class="sidebar-tab-trigger" data-tab="appearance">
+        <i class="fa-solid fa-sliders"></i>
+        <span>Settings</span>
+      </button>
+    </div>
+
+    <!-- Tab 1: Terminals Panel -->
+    <div id="drawer-tab-terminals" class="sidebar-tab-panel active">
+      <div class="drawer-action-row">
+        <button type="button" id="drawer-btn-new-session" class="btn btn-primary btn-sm full-width">
+          <i class="fa-solid fa-plus"></i> New Session
+        </button>
+      </div>
+      <div class="drawer-section-title">Active Terminals</div>
+      <div id="drawer-sessions-list" class="drawer-sessions-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Tab 2: Files Panel -->
+    <div id="drawer-tab-files" class="sidebar-tab-panel">
+      <div class="drawer-files-toolbar">
+        <div class="drawer-files-breadcrumb" id="drawer-files-breadcrumb">/</div>
+        <div class="drawer-files-actions">
+          <button type="button" id="drawer-btn-files-upload" class="btn btn-secondary btn-xs"><i class="fa-solid fa-cloud-arrow-up"></i> Upload</button>
+          <button type="button" id="drawer-btn-files-refresh" class="btn btn-secondary btn-xs" title="Refresh file list"><i class="fa-solid fa-rotate-right"></i></button>
+        </div>
+      </div>
+      <div class="drawer-files-container">
+        <div id="drawer-files-list" class="drawer-files-list">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Appearance & Settings Panel -->
+    <div id="drawer-tab-appearance" class="sidebar-tab-panel">
+      <div class="setting-section">
+        <label class="setting-label">Font Size</label>
+        <div class="font-size-bar">
+          <div class="font-stepper">
+            <button type="button" id="drawer-btn-font-dec" class="btn-step" title="Decrease font size">A−</button>
+            <span id="drawer-font-size-val" class="font-size-val">14 px</span>
+            <button type="button" id="drawer-btn-font-inc" class="btn-step" title="Increase font size">A+</button>
+          </div>
+          <div class="font-presets">
+            <button type="button" class="btn-preset" data-size="11">11px</button>
+            <button type="button" class="btn-preset" data-size="12">12px</button>
+            <button type="button" class="btn-preset" data-size="13">13px</button>
+            <button type="button" class="btn-preset" data-size="14">14px</button>
+            <button type="button" class="btn-preset" data-size="16">16px</button>
+            <button type="button" class="btn-preset" data-size="18">18px</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-section">
+        <label class="setting-label">Color Themes</label>
+        <div id="drawer-themes-grid" class="themes-grid">
+          <!-- Dynamically rendered theme cards with swatches -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item">
+        <span class="sidebar-version">Tunminal v0.1.14</span>
+      </div>
+      <button type="button" id="drawer-btn-disconnect" class="sidebar-footer-btn" title="Sign out / Reconnect">
+        <i class="fa-solid fa-right-from-bracket"></i>
+      </button>
+    </div>
+  </aside>
+
   <!-- Main Application Shell -->
   <div id="app">
     <!-- Top Header -->
@@ -28,10 +129,11 @@
         <span id="latency-badge" class="latency-badge hidden" title="WebSocket Ping Latency">-- ms</span>
       </div>
 
-      <!-- Mobile Session Title Bar (vibe-term Image 2 style) -->
+      <!-- Mobile Session Title Bar (vibe-term style) -->
       <div id="header-active-session" class="header-session-title" title="Tap to switch sessions">
         <span id="session-status-dot" class="status-dot">●</span>
         <span id="session-title-text" class="session-title-text">Default</span>
+        <i class="fa-solid fa-chevron-down session-chevron"></i>
       </div>
 
       <!-- Tab Bar for Sessions (Desktop) -->
@@ -342,7 +444,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/themes.js?v=15"></script>
-  <script src="/static/app.js?v=15"></script>
+  <script src="/static/themes.js?v=17"></script>
+  <script src="/static/app.js?v=17"></script>
 </body>
 </html>
