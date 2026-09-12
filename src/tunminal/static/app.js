@@ -599,7 +599,7 @@
     const name = (session.name || session.command || "").toLowerCase();
     const isCodex = name.includes("codex");
     if (avatarEl) {
-      avatarEl.textContent = isCodex ? "🤖" : "⚡";
+      avatarEl.innerHTML = isCodex ? '<i class="fa-solid fa-robot"></i>' : '<i class="fa-solid fa-bolt"></i>';
       avatarEl.className = `gui-agent-avatar ${isCodex ? "avatar-codex" : "avatar-claude"}`;
     }
     if (titleEl) {
@@ -807,7 +807,7 @@
       const session = getActiveSession();
       const isCodex = session && (session.name || session.command || "").toLowerCase().includes("codex");
       const agentName = isCodex ? "Codex" : "Claude Code";
-      const icon = isCodex ? "🤖" : "⚡";
+      const icon = isCodex ? '<i class="fa-solid fa-robot"></i>' : '<i class="fa-solid fa-bolt"></i>';
 
       const hero = document.createElement("div");
       hero.className = "gui-welcome-hero";
@@ -821,19 +821,19 @@
         </p>
         <div class="welcome-suggestions">
           <div class="suggestion-card" data-prompt="Explain the architecture and main components of this codebase">
-            <strong>📁 Architecture Overview</strong>
+            <strong><i class="fa-regular fa-folder-open"></i> Architecture Overview</strong>
             <span>Explain project structure and main files</span>
           </div>
           <div class="suggestion-card" data-prompt="Run existing project tests and explain any failures">
-            <strong>🧪 Run Test Suite</strong>
+            <strong><i class="fa-solid fa-flask-vial"></i> Run Test Suite</strong>
             <span>Run tests and analyze issues</span>
           </div>
           <div class="suggestion-card" data-prompt="Review git status and summarize recent code changes">
-            <strong>🔍 Git Diff & Status</strong>
+            <strong><i class="fa-solid fa-magnifying-glass"></i> Git Diff & Status</strong>
             <span>Summarize uncommitted modifications</span>
           </div>
           <div class="suggestion-card" data-prompt="Suggest code optimizations and potential refactoring">
-            <strong>⚡ Code Optimization</strong>
+            <strong><i class="fa-solid fa-bolt-lightning"></i> Code Optimization</strong>
             <span>Find performance improvements</span>
           </div>
         </div>
@@ -981,7 +981,7 @@
         const session = getActiveSession();
         const isCodex = session && (session.name || session.command || "").toLowerCase().includes("codex");
         const author = isCodex ? "OpenAI Codex" : "Claude Code";
-        const avatarIcon = isCodex ? "🤖" : "⚡";
+        const avatarIcon = isCodex ? '<i class="fa-solid fa-robot"></i>' : '<i class="fa-solid fa-bolt"></i>';
         const avatarClass = isCodex ? "avatar-codex" : "avatar-claude";
 
         const card = document.createElement("div");
@@ -1038,7 +1038,7 @@
       card.className = "msg-card msg-user";
       card.innerHTML = `
         <div class="msg-header">
-          <div class="msg-avatar avatar-user">👤</div>
+          <div class="msg-avatar avatar-user"><i class="fa-solid fa-user"></i></div>
           <span class="msg-author">You</span>
           <span class="msg-time">${msg.time}</span>
         </div>
@@ -1051,7 +1051,7 @@
       const session = getActiveSession();
       const isCodex = session && (session.name || session.command || "").toLowerCase().includes("codex");
       const author = isCodex ? "OpenAI Codex" : "Claude Code";
-      const avatarIcon = isCodex ? "🤖" : "⚡";
+      const avatarIcon = isCodex ? '<i class="fa-solid fa-robot"></i>' : '<i class="fa-solid fa-bolt"></i>';
       const avatarClass = isCodex ? "avatar-codex" : "avatar-claude";
 
       const card = document.createElement("div");
@@ -1086,7 +1086,7 @@
     let html = escapeHtml(processed);
 
     // 2. Tool executions (lines starting with ● or ❯)
-    html = html.replace(/^[●❯]\s*(.*)$/gm, '<div class="gui-tool-card">🛠️ <span>$1</span></div>');
+    html = html.replace(/^[●❯]\s*(.*)$/gm, '<div class="gui-tool-card"><i class="fa-solid fa-screwdriver-wrench"></i> <span>$1</span></div>');
 
     // 3. Bold **text**
     html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
@@ -1109,7 +1109,7 @@
         <div class="gui-code-block">
           <div class="gui-code-header">
             <span>${escapeHtml(language)}</span>
-            <button type="button" class="btn-copy-code" data-code="${encodeURIComponent(code)}">Copy</button>
+            <button type="button" class="btn-copy-code" data-code="${encodeURIComponent(code)}"><i class="fa-regular fa-copy"></i> Copy</button>
           </div>
           <pre class="gui-code-content"><code>${escapeHtml(code)}</code></pre>
         </div>
@@ -1352,10 +1352,11 @@
       tab.innerHTML = `
         <span class="status-dot ${s.alive ? "alive" : "dead"}"></span>
         <span>${escapeHtml(s.name || s.id)}</span>
-        <span class="tab-close" title="Close / Terminate Session">✕</span>
+        <span class="tab-close" title="Close / Terminate Session"><i class="fa-solid fa-xmark"></i></span>
       `;
       tab.addEventListener("click", (e) => {
-        if (e.target.classList.contains("tab-close")) {
+        const closeBtn = e.target.closest(".tab-close");
+        if (closeBtn) {
           e.stopPropagation();
           closeSession(s.id);
         } else {
@@ -1796,11 +1797,11 @@
   function updateBellButtonUI() {
     if (!btnBellToggle) return;
     if (bellSoundEnabled) {
-      btnBellToggle.textContent = "🔔";
+      btnBellToggle.innerHTML = '<i class="fa-solid fa-bell"></i>';
       btnBellToggle.title = "Terminal Bell & Notifications: ON (click to mute)";
       btnBellToggle.classList.remove("muted");
     } else {
-      btnBellToggle.textContent = "🔕";
+      btnBellToggle.innerHTML = '<i class="fa-solid fa-bell-slash"></i>';
       btnBellToggle.title = "Terminal Bell & Notifications: MUTED (click to enable)";
       btnBellToggle.classList.add("muted");
     }
@@ -2021,7 +2022,7 @@
         tr.innerHTML = `
           <td>
             <div class="file-row-name">
-              <span>📁</span>
+              <span><i class="fa-regular fa-folder"></i></span>
               <span class="file-dir-link">..</span>
             </div>
           </td>
@@ -2045,7 +2046,7 @@
       data.items.forEach((item) => {
         const tr = document.createElement("tr");
         const itemRelPath = data.current_path ? `${data.current_path}/${item.name}` : item.name;
-        const icon = item.is_dir ? "📁" : "📄";
+        const icon = item.is_dir ? '<i class="fa-regular fa-folder"></i>' : '<i class="fa-regular fa-file-lines"></i>';
         const dateStr = item.mtime ? new Date(item.mtime * 1000).toLocaleString() : "-";
         const sizeStr = item.is_dir ? "-" : formatBytes(item.size);
 
@@ -2065,7 +2066,7 @@
           <td class="col-action">
             ${
               !item.is_dir
-                ? `<button type="button" class="btn btn-sm btn-download" title="Download">⬇</button>`
+                ? `<button type="button" class="btn btn-sm btn-download" title="Download"><i class="fa-solid fa-download"></i></button>`
                 : ""
             }
           </td>

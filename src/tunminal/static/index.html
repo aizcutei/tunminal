@@ -8,20 +8,21 @@
   <meta name="theme-color" content="#12141a">
   <title>Tunminal</title>
   
+  <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/static/vendor/xterm.css">
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
   <!-- Main Application Shell -->
   <div id="app">
     <!-- Top Header -->
     <header id="header">
-      <!-- Mobile Drawer / Sessions Button (☰) -->
-      <button type="button" id="btn-menu-drawer" class="btn-icon header-menu-btn" title="Sessions Drawer">☰</button>
+      <!-- Mobile Drawer / Sessions Button -->
+      <button type="button" id="btn-menu-drawer" class="btn-icon header-menu-btn" title="Sessions Drawer"><i class="fa-solid fa-bars"></i></button>
 
       <!-- Desktop Brand Logo -->
       <div class="brand">
-        <span class="logo-icon">⚡</span>
+        <span class="logo-icon"><i class="fa-solid fa-bolt"></i></span>
         <span class="logo-text">Tunminal</span>
         <span id="connection-status" class="status-badge connecting" title="Connecting..."></span>
         <span id="latency-badge" class="latency-badge hidden" title="WebSocket Ping Latency">-- ms</span>
@@ -38,19 +39,19 @@
 
       <!-- View Mode Switcher (Terminal vs GUI) - Shown for Claude / Codex -->
       <div class="view-mode-toggle hidden" id="view-mode-toggle">
-        <button type="button" id="btn-mode-terminal" class="mode-btn active" title="Raw Terminal View">💻 Term</button>
-        <button type="button" id="btn-mode-gui" class="mode-btn" title="Modern Web GUI View">✨ GUI</button>
+        <button type="button" id="btn-mode-terminal" class="mode-btn active" title="Raw Terminal View"><i class="fa-solid fa-terminal"></i> Term</button>
+        <button type="button" id="btn-mode-gui" class="mode-btn" title="Modern Web GUI View"><i class="fa-solid fa-wand-magic-sparkles"></i> GUI</button>
       </div>
 
       <!-- Top Actions -->
       <div class="header-actions">
-        <button type="button" id="btn-new-tab" class="btn-icon" title="New Session">+</button>
-        <button type="button" id="btn-toggle-keypad" class="btn-icon" title="Toggle Virtual Keypad">⌨️</button>
-        <button type="button" id="btn-files-modal" class="btn-icon" title="Session Files (Upload / Download)">📁</button>
-        <button type="button" id="btn-theme-modal" class="btn-icon" title="Appearance & Settings">🎨</button>
-        <button type="button" id="btn-bell-toggle" class="btn-icon desktop-only" title="Terminal Bell & Notifications">🔔</button>
+        <button type="button" id="btn-new-tab" class="btn-icon" title="New Session"><i class="fa-solid fa-plus"></i></button>
+        <button type="button" id="btn-toggle-keypad" class="btn-icon" title="Toggle Virtual Keypad"><i class="fa-regular fa-keyboard"></i></button>
+        <button type="button" id="btn-files-modal" class="btn-icon" title="Session Files (Upload / Download)"><i class="fa-regular fa-folder-open"></i></button>
+        <button type="button" id="btn-theme-modal" class="btn-icon" title="Appearance & Settings"><i class="fa-solid fa-palette"></i></button>
+        <button type="button" id="btn-bell-toggle" class="btn-icon desktop-only" title="Terminal Bell & Notifications"><i class="fa-solid fa-bell"></i></button>
         <button type="button" id="btn-sessions-list" class="btn-icon desktop-only" title="View Running Terminals">
-          <span>📑</span>
+          <i class="fa-solid fa-table-cells-large"></i>
           <span id="sessions-badge" class="badge">1</span>
         </button>
       </div>
@@ -67,15 +68,15 @@
       <!-- Agent Dedicated Top Bar -->
       <div class="gui-agent-header">
         <div class="gui-agent-profile">
-          <div id="gui-agent-avatar" class="gui-agent-avatar">⚡</div>
+          <div id="gui-agent-avatar" class="gui-agent-avatar"><i class="fa-solid fa-bolt"></i></div>
           <div class="gui-agent-meta">
             <span id="gui-agent-title" class="gui-agent-name">Claude Code</span>
             <span id="gui-agent-status" class="gui-agent-status ready">● Ready</span>
           </div>
         </div>
         <div class="gui-agent-actions">
-          <button type="button" id="gui-btn-clear" class="gui-header-btn" title="Clear GUI conversation display">🧹 Clear</button>
-          <button type="button" id="gui-btn-to-term" class="gui-header-btn" title="Switch to Raw Terminal View">💻 Raw Terminal</button>
+          <button type="button" id="gui-btn-clear" class="gui-header-btn" title="Clear GUI conversation display"><i class="fa-solid fa-trash-can"></i> Clear</button>
+          <button type="button" id="gui-btn-to-term" class="gui-header-btn" title="Switch to Raw Terminal View"><i class="fa-solid fa-terminal"></i> Raw Terminal</button>
         </div>
       </div>
 
@@ -87,12 +88,12 @@
       <!-- Interactive Approval Bar (Shown when Claude/Codex prompts [y/n]) -->
       <div id="gui-approval-bar" class="gui-approval-bar hidden">
         <div class="approval-info">
-          <span class="approval-icon">⚠️</span>
+          <span class="approval-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
           <span id="approval-prompt-text" class="approval-text">Command requires confirmation</span>
         </div>
         <div class="approval-actions">
-          <button type="button" id="btn-approve-yes" class="btn-approval btn-approve">✓ Approve (y)</button>
-          <button type="button" id="btn-approve-no" class="btn-approval btn-deny">✕ Deny (n)</button>
+          <button type="button" id="btn-approve-yes" class="btn-approval btn-approve"><i class="fa-solid fa-check"></i> Approve (y)</button>
+          <button type="button" id="btn-approve-no" class="btn-approval btn-deny"><i class="fa-solid fa-xmark"></i> Deny (n)</button>
         </div>
       </div>
 
@@ -112,8 +113,8 @@
         <form id="gui-composer-form" class="gui-composer">
           <textarea id="gui-prompt-input" rows="1" placeholder="Message agent... (Enter to send, Shift+Enter for new line)" autocomplete="off"></textarea>
           <div class="gui-composer-controls">
-            <button type="button" id="gui-btn-stop" class="btn-circle btn-stop" title="Interrupt / Cancel (Ctrl+C)">■</button>
-            <button type="submit" id="gui-btn-send" class="btn-circle btn-send" title="Send (Enter)">↑</button>
+            <button type="button" id="gui-btn-stop" class="btn-circle btn-stop" title="Interrupt / Cancel (Ctrl+C)"><i class="fa-solid fa-stop"></i></button>
+            <button type="submit" id="gui-btn-send" class="btn-circle btn-send" title="Send (Enter)"><i class="fa-solid fa-arrow-up"></i></button>
           </div>
         </form>
       </div>
@@ -123,7 +124,7 @@
     <section id="mobile-keypad" class="mobile-keypad">
       <div class="keypad-scroll-container">
         <button type="button" id="btn-paste" class="key-pill pill-action" title="Paste from clipboard">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+          <i class="fa-regular fa-paste"></i>
         </button>
         <button type="button" class="key-pill pill-primary" data-key="Enter">Enter</button>
         <button type="button" class="key-pill" data-shortcut="shift-tab">SHIFT-TAB</button>
@@ -142,7 +143,7 @@
         <button type="button" class="key-pill" data-send="~">~</button>
         <button type="button" class="key-pill" data-send="-">-</button>
         <button type="button" class="key-pill" data-send="|">|</button>
-        <button type="button" id="btn-input-modal" class="key-pill" title="Type text with mobile IME">💬 Text</button>
+        <button type="button" id="btn-input-modal" class="key-pill" title="Type text with mobile IME"><i class="fa-regular fa-comment-dots"></i> Text</button>
         <button type="button" id="btn-font-dec-keypad" class="key-pill pill-font" title="Decrease font size">A−</button>
         <button type="button" id="btn-font-inc-keypad" class="key-pill pill-font" title="Increase font size">A+</button>
       </div>
@@ -151,8 +152,8 @@
     <!-- File Drop Overlay for Drag & Drop Uploads -->
     <div id="file-drop-overlay" class="file-drop-overlay hidden">
       <div class="file-drop-box">
-        <button type="button" id="file-drop-close" class="file-drop-close-btn" title="Dismiss overlay">✕</button>
-        <span class="file-drop-icon">📥</span>
+        <button type="button" id="file-drop-close" class="file-drop-close-btn" title="Dismiss overlay"><i class="fa-solid fa-xmark"></i></button>
+        <span class="file-drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
         <span class="file-drop-title">Drop files to upload</span>
         <span class="file-drop-subtitle">Files will upload directly into active session directory</span>
       </div>
@@ -206,7 +207,7 @@
           <h3>Running Terminals</h3>
           <p class="modal-subtitle">Terminals run in the background even if you close your browser. Pick any terminal to resume.</p>
         </div>
-        <button type="button" id="sessions-modal-close" class="btn-icon-plain">✕</button>
+        <button type="button" id="sessions-modal-close" class="btn-icon-plain"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <div id="sessions-list-container" class="sessions-list">
@@ -214,7 +215,7 @@
       </div>
 
       <div class="modal-actions space-between">
-        <button type="button" id="modal-open-new-btn" class="btn btn-primary">+ New Terminal</button>
+        <button type="button" id="modal-open-new-btn" class="btn btn-primary"><i class="fa-solid fa-plus"></i> New Terminal</button>
         <button type="button" id="sessions-modal-done" class="btn btn-secondary">Close</button>
       </div>
     </div>
@@ -230,7 +231,7 @@
         </div>
         <div class="modal-actions">
           <button type="button" id="text-modal-cancel" class="btn btn-secondary">Cancel</button>
-          <button type="submit" class="btn btn-primary">Send ↵</button>
+          <button type="submit" class="btn btn-primary">Send <i class="fa-solid fa-paper-plane"></i></button>
         </div>
       </form>
     </div>
@@ -244,7 +245,7 @@
           <h3>Appearance & Settings</h3>
           <p class="modal-subtitle">Customize terminal font size and color themes.</p>
         </div>
-        <button type="button" id="theme-modal-close" class="btn-icon-plain">✕</button>
+        <button type="button" id="theme-modal-close" class="btn-icon-plain"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <!-- Font Size Controls Section -->
@@ -288,7 +289,7 @@
           <h3>Session Files</h3>
           <p id="files-current-dir" class="modal-subtitle">Working directory: /</p>
         </div>
-        <button type="button" id="files-modal-close" class="btn-icon-plain">✕</button>
+        <button type="button" id="files-modal-close" class="btn-icon-plain"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <div class="files-toolbar">
@@ -297,8 +298,8 @@
         </div>
         <div class="files-actions">
           <input type="file" id="files-hidden-input" multiple class="hidden">
-          <button type="button" id="btn-files-upload" class="btn btn-secondary btn-sm">⬆ Upload File</button>
-          <button type="button" id="btn-files-refresh" class="btn btn-secondary btn-sm" title="Refresh file list">🔄</button>
+          <button type="button" id="btn-files-upload" class="btn btn-secondary btn-sm"><i class="fa-solid fa-cloud-arrow-up"></i> Upload File</button>
+          <button type="button" id="btn-files-refresh" class="btn btn-secondary btn-sm" title="Refresh file list"><i class="fa-solid fa-rotate-right"></i></button>
         </div>
       </div>
 
@@ -341,7 +342,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/themes.js?v=6"></script>
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/themes.js?v=8"></script>
+  <script src="/static/app.js?v=8"></script>
 </body>
 </html>

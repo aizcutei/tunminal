@@ -270,6 +270,10 @@ html, body {
   transition: all 0.15s ease;
 }
 
+.tab-close i {
+  pointer-events: none;
+}
+
 .tab-close:hover {
   opacity: 1;
   background: rgba(218, 54, 51, 0.2);
@@ -296,6 +300,10 @@ html, body {
   font-size: 15px;
   cursor: pointer;
   transition: all 0.18s ease;
+}
+
+.btn-icon i {
+  pointer-events: none;
 }
 
 .btn-icon:hover {
@@ -363,6 +371,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   height: 33px;
   padding: 0 13px;
   border-radius: 9999px;
@@ -379,6 +388,10 @@ html, body {
   -webkit-user-select: none;
   touch-action: manipulation;
   transition: all 0.12s ease;
+}
+
+.key-pill i {
+  pointer-events: none;
 }
 
 .key-pill:hover {
@@ -611,6 +624,13 @@ html, body {
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-plain i {
+  pointer-events: none;
 }
 
 .btn-icon-plain:hover {
@@ -749,6 +769,9 @@ html, body {
 }
 
 .mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -759,6 +782,10 @@ html, body {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
+}
+
+.mode-btn i {
+  pointer-events: none;
 }
 
 .mode-btn:hover {
@@ -866,6 +893,9 @@ html, body {
 }
 
 .gui-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background-color: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-secondary);
@@ -875,6 +905,10 @@ html, body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+.gui-header-btn i {
+  pointer-events: none;
 }
 
 .gui-header-btn:hover {
@@ -913,6 +947,7 @@ html, body {
   height: 56px;
   border-radius: 16px;
   background: linear-gradient(135deg, #d97706, #b45309);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -972,8 +1007,16 @@ html, body {
 }
 
 .suggestion-card strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
   color: var(--text-primary);
+}
+
+.suggestion-card strong i {
+  color: var(--accent);
+  font-size: 13px;
 }
 
 .suggestion-card span {
@@ -1115,6 +1158,9 @@ html, body {
 }
 
 .btn-copy-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: none;
   border: 1px solid #30363d;
   color: #8b949e;
@@ -1123,6 +1169,10 @@ html, body {
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
+}
+
+.btn-copy-code i {
+  pointer-events: none;
 }
 
 .btn-copy-code:hover {
@@ -1213,6 +1263,7 @@ html, body {
 
 .approval-icon {
   font-size: 16px;
+  color: #e3b341;
 }
 
 .approval-text {
@@ -1227,6 +1278,9 @@ html, body {
 }
 
 .btn-approval {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 12px;
@@ -1234,6 +1288,10 @@ html, body {
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s;
+}
+
+.btn-approval i {
+  pointer-events: none;
 }
 
 .btn-approve {
@@ -1601,8 +1659,13 @@ html, body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.file-drop-close-btn i {
+  pointer-events: none;
+}
+
 .file-drop-icon {
   font-size: 48px;
+  color: var(--accent);
   animation: bounce 1.2s infinite alternate;
 }
 
@@ -1750,6 +1813,32 @@ html, body {
 .col-action {
   width: 70px;
   text-align: right;
+}
+
+.file-row-name span:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: var(--text-secondary);
+}
+
+.file-row-name span:first-child i.fa-folder {
+  color: #e3b341;
+}
+
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.btn-download i {
+  pointer-events: none;
 }
 
 .files-empty {
