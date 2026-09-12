@@ -10,6 +10,7 @@ from tunminal.pty import detect_cli_tools, get_default_shell
 from tunminal.security import AuthManager
 from tunminal.server import create_app
 from tunminal.session import SessionManager
+from tunminal.tray import TunminalTrayApp, is_tray_available
 from tunminal.tunnel import (
     CloudflareTunnel,
     ServiceStatus,
