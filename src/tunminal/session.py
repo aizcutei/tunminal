@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -12,6 +13,13 @@ from tunminal.pty import BasePty, spawn_pty
 logger = logging.getLogger("tunminal.session")
 
 MAX_SCROLLBACK_BYTES = 512 * 1024  # 512 KB scrollback buffer per session
+
+# Strip OSC color response sequences that some terminals send back to stdin
+# e.g., \x1b]10;rgb:f0f0/f6f6/fcfc\x1b\ or \x1b]11;rgb:...
+# Also handle cases where ESC was already stripped by Windows ConPTY: ]10;rgb:...\
+OSC_COLOR_REPORT_BYTES = re.compile(
+    rb"(?:\x1b\]|\])(?:10|11|12|4);rgb:[0-9a-fA-F/]+(?:\x1b\\|\x07|\\)?"
+)
 
 
 class TerminalSession:
@@ -139,6 +147,10 @@ class TerminalSession:
     def write(self, data: bytes) -> None:
         """Write user input to PTY stdin."""
         if self._pty and self.is_alive():
+            if b";rgb:" in data:
+                data = OSC_COLOR_REPORT_BYTES.sub(b"", data)
+                if not data:
+                    return
             self.last_active_at = time.time()
             self._pty.write(data)
 

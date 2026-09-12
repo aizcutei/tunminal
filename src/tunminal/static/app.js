@@ -540,7 +540,19 @@
     term.open(termContainer);
     fitAddon.fit();
 
+    // Suppress OSC color queries (10=fg, 11=bg, 12=cursor, 4=palette) so xterm doesn't
+    // report terminal colors back to stdin, which leaks as literal text in Windows ConPTY / Codex.
+    term.registerOscHandler(10, (data) => (data && data.startsWith("?") ? true : false));
+    term.registerOscHandler(11, (data) => (data && data.startsWith("?") ? true : false));
+    term.registerOscHandler(12, (data) => (data && data.startsWith("?") ? true : false));
+    term.registerOscHandler(4, (data) => (data && data.includes("?") ? true : false));
+
     term.onData((data) => {
+      // Guard: strip any OSC color query response sequences that xterm might emit
+      if (data && data.includes(";rgb:")) {
+        data = data.replace(/(?:\x1B\]|\])(?:10|11|12|4);rgb:[0-9a-fA-F/]+(?:\x1B\\|\x07|\\)?/g, "");
+        if (!data) return;
+      }
       sendTerminalInput(data);
     });
 
@@ -693,6 +705,11 @@
   }
 
   function sendTerminalInput(data) {
+    if (!data) return;
+    if (typeof data === "string" && data.includes(";rgb:")) {
+      data = data.replace(/(?:\x1B\]|\])(?:10|11|12|4);rgb:[0-9a-fA-F/]+(?:\x1B\\|\x07|\\)?/g, "");
+      if (!data) return;
+    }
     if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
       activeSocket.send(data);
     }

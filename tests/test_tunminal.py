@@ -312,3 +312,42 @@ def test_cloudflare_tunnel_decoding():
     assert tunnel.tunnel_url == "https://test-sample-123.trycloudflare.com"
     assert tunnel._url_event.is_set()
 
+
+def test_osc_color_report_filtering():
+    from tunminal.session import TerminalSession, OSC_COLOR_REPORT_BYTES
+
+    class MockPty:
+        def __init__(self):
+            self.written = []
+
+        def write(self, data: bytes):
+            self.written.append(data)
+
+        def is_alive(self):
+            return True
+
+    session = TerminalSession(session_id="test-session", name="Test")
+    mock_pty = MockPty()
+    session._pty = mock_pty
+
+    # 1. Full OSC color reports with ESC (\x1b)
+    session.write(b"\x1b]10;rgb:f0f0/f6f6/fcfc\x1b\\\x1b]11;rgb:0a0a/0c0c/1010\x1b\\")
+    assert mock_pty.written == []
+
+    # 2. OSC color reports with BEL (\x07)
+    session.write(b"\x1b]10;rgb:f0f0/f6f6/fcfc\x07")
+    assert mock_pty.written == []
+
+    # 3. Stripped OSC sequences (as leaked through Windows ConPTY)
+    session.write(b"]10;rgb:f0f0/f6f6/fcfc\\]11;rgb:0a0a/0c0c/1010\\")
+    assert mock_pty.written == []
+
+    # 4. Normal keystrokes / commands must pass through untouched
+    session.write(b"ls -la\r\n")
+    assert mock_pty.written == [b"ls -la\r\n"]
+
+    # 5. Mixed keystrokes with OSC sequence in the middle
+    session.write(b"prompt_before\x1b]10;rgb:ffff/ffff/ffff\x1b\\prompt_after")
+    assert mock_pty.written == [b"ls -la\r\n", b"prompt_beforeprompt_after"]
+
+
