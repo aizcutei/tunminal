@@ -351,3 +351,63 @@ def test_osc_color_report_filtering():
     assert mock_pty.written == [b"ls -la\r\n", b"prompt_beforeprompt_after"]
 
 
+def test_named_tunnel_config_parsing(tmp_path):
+    from tunminal.tunnel import find_hostname_in_config
+
+    cfg_file = tmp_path / "config.yml"
+    cfg_file.write_text(
+        """
+tunnel: 12345678-abcd-1234-abcd-1234567890ab
+credentials-file: /path/to/credentials.json
+ingress:
+  - hostname: term.mycompany.com
+    service: http://localhost:8080
+  - hostname: api.mycompany.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404
+""",
+        encoding="utf-8",
+    )
+
+    # Ingress for port 8080 should resolve to term.mycompany.com
+    hostname = find_hostname_in_config(str(cfg_file), port=8080)
+    assert hostname == "term.mycompany.com"
+
+    # Ingress for port 3000 should resolve to api.mycompany.com
+    hostname_3000 = find_hostname_in_config(str(cfg_file), port=3000)
+    assert hostname_3000 == "api.mycompany.com"
+
+    # Ingress for port 9999 should return None
+    assert find_hostname_in_config(str(cfg_file), port=9999) is None
+
+
+def test_cloudflare_tunnel_command_generation(monkeypatch):
+    from tunminal.tunnel import CloudflareTunnel
+
+    # Mock get_cloudflared_path
+    monkeypatch.setattr("tunminal.tunnel.get_cloudflared_path", lambda: "/mock/cloudflared")
+
+    # 1. Quick Tunnel (HTTP/2 protocol default)
+    qt = CloudflareTunnel(local_port=8080, protocol="http2")
+    assert qt.protocol == "http2"
+    assert qt.tunnel_token is None
+
+    # 2. Named Tunnel with Token
+    nt = CloudflareTunnel(local_port=8080, tunnel_token="eyJhToken123", protocol="http2")
+    assert nt.tunnel_token == "eyJhToken123"
+    assert nt.protocol == "http2"
+
+
+def test_detect_existing_tunnel_mocked(monkeypatch, tmp_path):
+    from tunminal.tunnel import detect_existing_tunnel, ServiceStatus
+
+    # Simulate running service
+    monkeypatch.setattr("tunminal.tunnel.check_windows_service", lambda: (ServiceStatus.RUNNING, "Cloudflared"))
+    monkeypatch.setattr("sys.platform", "win32")
+
+    info = detect_existing_tunnel(port=8080)
+    assert info.service_status == ServiceStatus.RUNNING
+    assert info.service_name == "Cloudflared"
+
+
+

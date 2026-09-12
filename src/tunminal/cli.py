@@ -10,8 +10,12 @@ from tunminal.pty import detect_cli_tools, get_default_shell
 from tunminal.security import AuthManager
 from tunminal.server import create_app
 from tunminal.session import SessionManager
-from tunminal.tray import TunminalTrayApp, is_tray_available
-from tunminal.tunnel import CloudflareTunnel, get_install_instructions
+from tunminal.tunnel import (
+    CloudflareTunnel,
+    ServiceStatus,
+    detect_existing_tunnel,
+    get_install_instructions,
+)
 
 
 class InvalidHttpRequestFilter(logging.Filter):
@@ -101,6 +105,22 @@ def main():
         help="Enable/disable Cloudflare Tunnel (default: enabled)",
     )
     parser.add_argument(
+        "--tunnel-token",
+        default=os.environ.get("TUNMINAL_TUNNEL_TOKEN", None),
+        help="Cloudflare Named Tunnel token (enables permanent fixed Named Tunnel)",
+    )
+    parser.add_argument(
+        "--tunnel-url",
+        default=os.environ.get("TUNMINAL_TUNNEL_URL", None),
+        help="Custom public URL/domain for Named Tunnel (e.g. https://term.yourdomain.com)",
+    )
+    parser.add_argument(
+        "--tunnel-protocol",
+        default="http2",
+        choices=["http2", "quic", "auto"],
+        help="Network protocol for cloudflared (default: http2 for optimal TCP stability)",
+    )
+    parser.add_argument(
         "--tray",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -128,22 +148,90 @@ def main():
     app = create_app(auth_manager=auth, session_manager=session_mgr, default_cmd=initial_cmd)
 
     # 4. Handle Cloudflare Tunnel
-    tunnel: CloudflareTunnel = None
+    tunnel: Optional[CloudflareTunnel] = None
     remote_url = None
+    tunnel_label = "Tunnel HTTPS"
 
     if args.tunnel:
-        tunnel = CloudflareTunnel(local_port=args.port, host=args.host)
-        if tunnel.is_available():
-            print("\033[1;33m[*] Starting Cloudflare Tunnel...\033[0m")
-            tunnel_url = tunnel.start(timeout=20.0)
-            if tunnel_url:
-                remote_url = auth.make_magic_url(tunnel_url)
+        if args.tunnel_token:
+            # Priority 1: User explicitly provided a tunnel token
+            tunnel = CloudflareTunnel(
+                local_port=args.port,
+                host=args.host,
+                tunnel_token=args.tunnel_token,
+                protocol=args.tunnel_protocol,
+            )
+            if tunnel.is_available():
+                print(f"\033[1;33m[*] Starting Cloudflare Named Tunnel (Token Mode, {args.tunnel_protocol})...\033[0m")
+                tunnel.start(timeout=10.0)
+                tunnel_label = "Named Tunnel (Token)"
+                if args.tunnel_url:
+                    pub_url = args.tunnel_url
+                    if not pub_url.startswith("http://") and not pub_url.startswith("https://"):
+                        pub_url = f"https://{pub_url}"
+                    remote_url = auth.make_magic_url(pub_url)
+                else:
+                    print("\033[1;36m[*] Named Tunnel running with token.\033[0m")
+                    print("    Tip: Use --tunnel-url https://<your-domain> to generate mobile magic link & QR code.\n")
             else:
-                print("\033[1;31m[!] Cloudflare Tunnel timed out or failed to start.\033[0m")
+                print("\033[1;33m[*] Notice: `cloudflared` executable was not found.\033[0m")
+                print(f"    {get_install_instructions()}\n")
         else:
-            print("\033[1;33m[*] Notice: `cloudflared` executable was not found.\033[0m")
-            print("    To access Tunminal remotely from your phone over the internet:")
-            print(f"    {get_install_instructions()}\n")
+            # Priority 2: Auto-detect if a system service or local config already exists
+            existing = detect_existing_tunnel(port=args.port)
+            if existing.service_status == ServiceStatus.RUNNING:
+                tunnel_label = "Named Tunnel (System Service)"
+                print(f"\033[1;32m[*] Detected active Cloudflare system service ({existing.service_name or 'Cloudflared'}).\033[0m")
+                pub_url = args.tunnel_url or existing.detected_hostname
+                if pub_url:
+                    if not pub_url.startswith("http://") and not pub_url.startswith("https://"):
+                        pub_url = f"https://{pub_url}"
+                    remote_url = auth.make_magic_url(pub_url)
+                else:
+                    print("    Using existing background Named Tunnel.")
+                    print("    Tip: Pass --tunnel-url https://<your-domain> to display mobile magic link & QR code.\n")
+            elif existing.service_status == ServiceStatus.STOPPED:
+                print(f"\033[1;33m[*] Notice: Found installed Cloudflare service '{existing.service_name}', but it is STOPPED (shows DOWN in dashboard).\033[0m")
+                if sys.platform == "win32":
+                    print("    To start it as Administrator: Start-Service Cloudflared (or: sc.exe start Cloudflared)")
+                else:
+                    print("    To start it: sudo systemctl start cloudflared")
+                print("    Falling back to Cloudflare Quick Tunnel (HTTP/2)...\n")
+
+                tunnel = CloudflareTunnel(
+                    local_port=args.port,
+                    host=args.host,
+                    protocol=args.tunnel_protocol,
+                )
+                if tunnel.is_available():
+                    print(f"\033[1;33m[*] Starting Cloudflare Quick Tunnel ({args.tunnel_protocol})...\033[0m")
+                    tunnel_url = tunnel.start(timeout=25.0)
+                    if tunnel_url:
+                        remote_url = auth.make_magic_url(tunnel_url)
+                        tunnel_label = "Quick Tunnel HTTPS"
+                    else:
+                        print("\033[1;31m[!] Cloudflare Tunnel timed out or failed to start.\033[0m")
+                else:
+                    print("\033[1;33m[*] Notice: `cloudflared` executable was not found.\033[0m")
+                    print(f"    {get_install_instructions()}\n")
+            else:
+                # Priority 3: Start Quick Tunnel with HTTP/2
+                tunnel = CloudflareTunnel(
+                    local_port=args.port,
+                    host=args.host,
+                    protocol=args.tunnel_protocol,
+                )
+                if tunnel.is_available():
+                    print(f"\033[1;33m[*] Starting Cloudflare Quick Tunnel ({args.tunnel_protocol})...\033[0m")
+                    tunnel_url = tunnel.start(timeout=25.0)
+                    if tunnel_url:
+                        remote_url = auth.make_magic_url(tunnel_url)
+                        tunnel_label = "Quick Tunnel HTTPS"
+                    else:
+                        print("\033[1;31m[!] Cloudflare Tunnel timed out or failed to start.\033[0m")
+                else:
+                    print("\033[1;33m[*] Notice: `cloudflared` executable was not found.\033[0m")
+                    print(f"    {get_install_instructions()}\n")
 
     local_url = auth.make_magic_url(f"http://{args.host}:{args.port}")
 
@@ -151,8 +239,8 @@ def main():
     print("-" * 56)
     print(f"  Local Access (HTTP):     \033[1;32m{local_url}\033[0m")
     if remote_url:
-        print(f"  Remote (Tunnel HTTPS):   \033[1;36m{remote_url}\033[0m")
-        auth.print_qr_code(remote_url, label="Scan with Phone Camera for Remote Access:")
+        print(f"  Remote ({tunnel_label}): \033[1;36m{remote_url}\033[0m")
+        auth.print_qr_code(remote_url, label=f"Scan with Phone Camera for Remote Access ({tunnel_label}):")
     else:
         auth.print_qr_code(local_url, label="Scan with Phone Camera for Local Network Access:")
     print("-" * 56)
