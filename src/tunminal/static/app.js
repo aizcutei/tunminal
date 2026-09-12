@@ -726,7 +726,25 @@
   // 2-character escape codes, and C1 controls without range ambiguity.
   const ANSI_REGEX = /(?:\x1B\][^\x07\x1b]*(?:\x07|\x1B\\)|\x1B\[[0-?]*[ -/]*[@-~]|\x1B[@-Z\\_]|[\x80-\x9A\x9C-\x9F])/g;
 
+  let ansiCarryOver = "";
+
   function stripAnsi(str) {
+    if (!str) return "";
+    if (ansiCarryOver) {
+      str = ansiCarryOver + str;
+      ansiCarryOver = "";
+    }
+    // Check if the chunk ends with an incomplete escape sequence that might continue in the next chunk
+    // e.g. \x1b or \x1b[ or \x1b[38;2; without a terminating character [@-~] or OSC without \x07/\x1b\
+    const trailingEsc = str.match(/\x1B(?:\][^\x07\x1b]*|\[[0-?]*[ -/]*|[@-Z\\_])?$/);
+    if (trailingEsc && trailingEsc.index !== undefined && trailingEsc.index < str.length) {
+      const candidate = trailingEsc[0];
+      const isComplete = /^(?:\x1B\][^\x07\x1b]*(?:\x07|\x1B\\)|\x1B\[[0-?]*[ -/]*[@-~]|\x1B[@-Z\\_]|[\x80-\x9A\x9C-\x9F])$/.test(candidate);
+      if (!isComplete) {
+        ansiCarryOver = candidate;
+        str = str.slice(0, trailingEsc.index);
+      }
+    }
     return str ? str.replace(ANSI_REGEX, "") : "";
   }
 
@@ -796,6 +814,7 @@
         streamIdleTimer = null;
       }
       this.pendingChunk = "";
+      ansiCarryOver = "";
       this.messages = [];
       this.currentAssistantCard = null;
       this.currentBodyEl = null;
@@ -896,6 +915,45 @@
 
       checkInteractiveApproval(clean);
 
+      // Helper: Filter orphaned SGR codes, starfield dots, and Codex startup banners
+      function isTerminalNoiseLine(trimmed) {
+        if (!trimmed) return true;
+
+        // 1. Orphaned ANSI SGR / CSI escape remnants (e.g. 123;123;48;2;41;41;41m . , 1H, ;48;2;...)
+        if (
+          /^(?:;|\d|;)+m\s*[\.·\s]*$/.test(trimmed) ||
+          /^\d+;\d+;.*m/.test(trimmed) ||
+          /^;?\d+;2;\d+;\d+/.test(trimmed) ||
+          /^;?\d+;\d+;\d+;\d+/.test(trimmed) ||
+          /^\d*H\s*$/.test(trimmed) ||
+          /^[\d;]+[a-zA-Z]\s*[\.·\s]*$/.test(trimmed) ||
+          /[0-9;]+m\s*[\.·\s]*$/.test(trimmed)
+        ) {
+          return true;
+        }
+
+        // 2. Starfield idle dots / periods / bullets: e.g. " . ", " . . ", " . . . ."
+        if (/^[\s.·•*~-]+$/.test(trimmed) || /^[.\s·•*]{2,}$/.test(trimmed)) {
+          return true;
+        }
+
+        // 3. Codex startup banner & box curves & environment info:
+        // e.g. "╭─── || ~\Documents\tunmial\tunminal ├─── ╭ ╭ ╭ ╭"
+        // "╭ gpt-6-astra default · ~\Documents\tunmial\tunminal ╭ ╭"
+        if (
+          /^[╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝\s|─-]{1,8}$/.test(trimmed) ||
+          /(?:gpt-[a-z0-9_-]+|default ·|high ·|low ·|~\\Documents|\\Documents\\|\/Documents\/)/i.test(trimmed) ||
+          /^│\s*(>_\s*OpenAI Codex|model:|directory:)/i.test(trimmed) ||
+          /^Tip:\s/i.test(trimmed) ||
+          /^>_\s*OpenAI Codex/i.test(trimmed) ||
+          (/^[╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝]/.test(trimmed) && (trimmed.includes("tunminal") || trimmed.includes("||") || trimmed.includes("model") || trimmed.includes("Codex")))
+        ) {
+          return true;
+        }
+
+        return false;
+      }
+
       // Process lines handling carriage return (\r) overwrites & transient spinners
       const rawLines = clean.split("\n");
       let meaningfulContent = "";
@@ -924,7 +982,12 @@
           continue; // Do NOT append raw prompt redraw into chat text
         }
 
-        // 2. Detect and filter Braille animation frames (Codex idle dots/spinners: [\u2800-\u28FF])
+        // 2. Discard terminal noise (orphaned SGR remnants, starfield dots, startup banners)
+        if (isTerminalNoiseLine(trimmed)) {
+          continue;
+        }
+
+        // 3. Detect and filter Braille animation frames (Codex idle dots/spinners: [\u2800-\u28FF])
         const brailleMatches = trimmed.match(/[\u2800-\u28FF]/g);
         const brailleCount = brailleMatches ? brailleMatches.length : 0;
         const nonSpaceLen = trimmed.replace(/\s/g, "").length;
@@ -932,7 +995,7 @@
           continue; // Discard transient idle starfield/spinner animation
         }
 
-        // 3. Detect standard CLI spinner frames with optional indentation: e.g. ⠋ Thinking..., ◐ Working...
+        // 4. Detect standard CLI spinner frames with optional indentation: e.g. ⠋ Thinking..., ◐ Working...
         const spinnerMatch = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒◜◝◞◟]\s*(.*)/.exec(trimmed);
         if (spinnerMatch) {
           const statusText = spinnerMatch[1] ? spinnerMatch[1].trim() : "Working...";
@@ -940,29 +1003,14 @@
           continue; // Do NOT append transient spinner frame into permanent chat text
         }
 
-        // 4. Detect transient thinking / progress timer updates: e.g. "● Thinking... (2s)" or "● Running command..."
+        // 5. Detect transient thinking / progress timer updates: e.g. "● Thinking... (2s)" or "● Running command..."
         if (/^●\s*(Thinking|Working|Running|Waiting|Searching|Generating).*\(\d+(\.\d+)?s\)/i.test(trimmed)) {
           setAgentStatusText(trimmed, true);
           continue;
         }
 
-        // 5. Filter decorative and box drawing frames (including full Unicode Box Drawing \u2500-\u257F)
+        // 6. Filter decorative and box drawing frames (including full Unicode Box Drawing \u2500-\u257F)
         if (/^[\u2500-\u257F\s╭╰├┌└│─═━┃┏┓┗┛╔╗╚╝]+$/.test(trimmed) && trimmed.length > 2) {
-          continue;
-        }
-
-        // 6. Filter Codex startup banner & tips
-        if (
-          /^│\s*(>_\s*OpenAI Codex|model:|directory:)/i.test(trimmed) ||
-          /^Tip:\s/i.test(trimmed) ||
-          /^>_\s*OpenAI Codex/i.test(trimmed)
-        ) {
-          continue;
-        }
-
-        // 7. Filter raw prompt redraw lines: ? What would you like to do? ›
-        if (/^\?\s+.*\s*›\s*$/.test(trimmed)) {
-          hasReadyPrompt = true;
           continue;
         }
 
@@ -971,15 +1019,17 @@
 
       if (meaningfulContent) {
         // Only remove welcome hero when genuine conversation content arrives
-        const hero = guiChatMessages.querySelector(".gui-welcome-hero");
-        if (hero) hero.remove();
+        if (this.messages.length > 0 || !hasReadyPrompt) {
+          const hero = guiChatMessages.querySelector(".gui-welcome-hero");
+          if (hero) hero.remove();
 
-        this.pendingChunk += meaningfulContent;
-        setAgentWorkingState(true);
+          this.pendingChunk += meaningfulContent;
+          setAgentWorkingState(true);
 
-        // If in Terminal mode, don't trigger DOM re-renders; accumulate quietly
-        if (currentViewMode === "gui") {
-          this.scheduleRender();
+          // If in Terminal mode, don't trigger DOM re-renders; accumulate quietly
+          if (currentViewMode === "gui") {
+            this.scheduleRender();
+          }
         }
       }
 
@@ -988,6 +1038,16 @@
         if (streamIdleTimer) {
           clearTimeout(streamIdleTimer);
           streamIdleTimer = null;
+        }
+        // If user hasn't sent any message yet, this was just the startup prompt screen!
+        if (this.messages.length === 0) {
+          this.pendingChunk = "";
+          this.currentAssistantContent = "";
+          this.currentAssistantCard = null;
+          this.currentBodyEl = null;
+          this.renderWelcomeOrMessages();
+          setAgentWorkingState(false);
+          return;
         }
         this.flushPending(false);
         this.finalizeAssistantMessage();
@@ -998,6 +1058,15 @@
       // Fallback: If output goes idle for 1.8s, agent turn has completed -> seal card into static DOM
       if (streamIdleTimer) clearTimeout(streamIdleTimer);
       streamIdleTimer = setTimeout(() => {
+        if (this.messages.length === 0) {
+          this.pendingChunk = "";
+          this.currentAssistantContent = "";
+          this.currentAssistantCard = null;
+          this.currentBodyEl = null;
+          this.renderWelcomeOrMessages();
+          setAgentWorkingState(false);
+          return;
+        }
         this.flushPending(false);
         this.finalizeAssistantMessage();
         setAgentWorkingState(false);
