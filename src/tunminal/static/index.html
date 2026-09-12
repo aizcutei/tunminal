@@ -9,13 +9,17 @@
   <title>Tunminal</title>
   
   <link rel="stylesheet" href="/static/vendor/xterm.css">
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
   <!-- Main Application Shell -->
   <div id="app">
     <!-- Top Header -->
     <header id="header">
+      <!-- Mobile Drawer / Sessions Button (☰) -->
+      <button type="button" id="btn-menu-drawer" class="btn-icon header-menu-btn" title="Sessions Drawer">☰</button>
+
+      <!-- Desktop Brand Logo -->
       <div class="brand">
         <span class="logo-icon">⚡</span>
         <span class="logo-text">Tunminal</span>
@@ -23,26 +27,32 @@
         <span id="latency-badge" class="latency-badge hidden" title="WebSocket Ping Latency">-- ms</span>
       </div>
 
-      <!-- Tab Bar for Sessions -->
+      <!-- Mobile Session Title Bar (vibe-term Image 2 style) -->
+      <div id="header-active-session" class="header-session-title" title="Tap to switch sessions">
+        <span id="session-status-dot" class="status-dot">●</span>
+        <span id="session-title-text" class="session-title-text">Default</span>
+      </div>
+
+      <!-- Tab Bar for Sessions (Desktop) -->
       <nav id="tabs-bar" class="tabs-bar"></nav>
 
-      <!-- View Mode Switcher (Terminal vs GUI) - Only shown for Claude / Codex -->
+      <!-- View Mode Switcher (Terminal vs GUI) - Shown for Claude / Codex -->
       <div class="view-mode-toggle hidden" id="view-mode-toggle">
-        <button type="button" id="btn-mode-terminal" class="mode-btn active" title="Raw Terminal View">💻 Terminal</button>
+        <button type="button" id="btn-mode-terminal" class="mode-btn active" title="Raw Terminal View">💻 Term</button>
         <button type="button" id="btn-mode-gui" class="mode-btn" title="Modern Web GUI View">✨ GUI</button>
       </div>
 
       <!-- Top Actions -->
       <div class="header-actions">
-        <button id="btn-bell-toggle" class="btn-icon" title="Terminal Bell & Notifications (Sound on)">🔔</button>
-        <button id="btn-files-modal" class="btn-icon" title="Session Files (Upload / Download)">📁</button>
-        <button id="btn-theme-modal" class="btn-icon" title="Terminal Color Themes">🎨</button>
-        <button id="btn-sessions-list" class="btn-icon" title="View Running Terminals">
+        <button type="button" id="btn-new-tab" class="btn-icon" title="New Session">+</button>
+        <button type="button" id="btn-toggle-keypad" class="btn-icon" title="Toggle Virtual Keypad">⌨️</button>
+        <button type="button" id="btn-files-modal" class="btn-icon" title="Session Files (Upload / Download)">📁</button>
+        <button type="button" id="btn-theme-modal" class="btn-icon" title="Appearance & Settings">🎨</button>
+        <button type="button" id="btn-bell-toggle" class="btn-icon desktop-only" title="Terminal Bell & Notifications">🔔</button>
+        <button type="button" id="btn-sessions-list" class="btn-icon desktop-only" title="View Running Terminals">
           <span>📑</span>
           <span id="sessions-badge" class="badge">1</span>
         </button>
-        <button id="btn-new-tab" class="btn-icon" title="New Session">+</button>
-        <button id="btn-toggle-keypad" class="btn-icon" title="Toggle Mobile Keypad">⌨️</button>
       </div>
     </header>
 
@@ -109,32 +119,32 @@
       </div>
     </section>
 
-    <!-- Mobile Virtual Keyboard Toolbar -->
+    <!-- Mobile Virtual Keyboard Toolbar (vibe-term pill style matching Image 2) -->
     <section id="mobile-keypad" class="mobile-keypad">
-      <!-- Navigation & Common Keys -->
-      <div class="keypad-row">
-        <button class="key-btn" data-key="Escape">ESC</button>
-        <button class="key-btn" data-key="Tab">TAB</button>
-        <button id="mod-ctrl" class="key-btn mod-key">CTRL</button>
-        <button id="mod-alt" class="key-btn mod-key">ALT</button>
-        <button class="key-btn nav-arrow" data-key="ArrowUp">▲</button>
-        <button class="key-btn nav-arrow" data-key="ArrowDown">▼</button>
-        <button class="key-btn nav-arrow" data-key="ArrowLeft">◀</button>
-        <button class="key-btn nav-arrow" data-key="ArrowRight">▶</button>
-        <button class="key-btn enter-key" data-key="Enter">↵</button>
-      </div>
-
-      <!-- AI Agent Shortcuts & Tools -->
-      <div class="keypad-row secondary-row">
-        <button class="key-btn shortcut-btn" data-shortcut="ctrl-c">^C</button>
-        <button class="key-btn shortcut-btn" data-shortcut="ctrl-d">^D</button>
-        <button class="key-btn shortcut-btn" data-shortcut="ctrl-l">^L</button>
-        <button class="key-btn shortcut-btn" data-send="/">/</button>
-        <button class="key-btn shortcut-btn" data-send="~">~</button>
-        <button class="key-btn shortcut-btn" data-send="-">-</button>
-        <button class="key-btn shortcut-btn" data-send="|">|</button>
-        <button id="btn-input-modal" class="key-btn text-mode-btn" title="Type text with mobile IME">💬 Text</button>
-        <button id="btn-paste" class="key-btn" title="Paste clipboard">📋</button>
+      <div class="keypad-scroll-container">
+        <button type="button" id="btn-paste" class="key-pill pill-action" title="Paste from clipboard">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+        </button>
+        <button type="button" class="key-pill pill-primary" data-key="Enter">Enter</button>
+        <button type="button" class="key-pill" data-shortcut="shift-tab">SHIFT-TAB</button>
+        <button type="button" class="key-pill" data-key="Escape">ESC</button>
+        <button type="button" class="key-pill shortcut-pill" data-shortcut="ctrl-c">CTRL-C</button>
+        <button type="button" class="key-pill shortcut-pill" data-shortcut="ctrl-d">CTRL-D</button>
+        <button type="button" class="key-pill" data-key="Tab">TAB</button>
+        <button type="button" id="mod-ctrl" class="key-pill mod-pill">CTRL</button>
+        <button type="button" id="mod-alt" class="key-pill mod-pill">ALT</button>
+        <button type="button" class="key-pill" data-key="ArrowUp">▲</button>
+        <button type="button" class="key-pill" data-key="ArrowDown">▼</button>
+        <button type="button" class="key-pill" data-key="ArrowLeft">◀</button>
+        <button type="button" class="key-pill" data-key="ArrowRight">▶</button>
+        <button type="button" class="key-pill" data-shortcut="ctrl-l">CTRL-L</button>
+        <button type="button" class="key-pill" data-send="/">/</button>
+        <button type="button" class="key-pill" data-send="~">~</button>
+        <button type="button" class="key-pill" data-send="-">-</button>
+        <button type="button" class="key-pill" data-send="|">|</button>
+        <button type="button" id="btn-input-modal" class="key-pill" title="Type text with mobile IME">💬 Text</button>
+        <button type="button" id="btn-font-dec-keypad" class="key-pill pill-font" title="Decrease font size">A−</button>
+        <button type="button" id="btn-font-inc-keypad" class="key-pill pill-font" title="Increase font size">A+</button>
       </div>
     </section>
 
@@ -226,19 +236,42 @@
     </div>
   </dialog>
 
-  <!-- Terminal Color Themes Dialog -->
+  <!-- Terminal Color Themes & Settings Dialog -->
   <dialog id="theme-modal" class="modal">
     <div class="modal-content modal-wide">
       <div class="modal-header">
         <div>
-          <h3>Terminal Color Themes</h3>
-          <p class="modal-subtitle">Select a color theme for the terminal style.</p>
+          <h3>Appearance & Settings</h3>
+          <p class="modal-subtitle">Customize terminal font size and color themes.</p>
         </div>
         <button type="button" id="theme-modal-close" class="btn-icon-plain">✕</button>
       </div>
 
-      <div id="themes-grid" class="themes-grid">
-        <!-- Dynamically rendered theme cards with swatches -->
+      <!-- Font Size Controls Section -->
+      <div class="setting-section">
+        <label class="setting-label">Terminal Font Size</label>
+        <div class="font-size-bar">
+          <div class="font-stepper">
+            <button type="button" id="btn-font-decrease" class="btn-step" title="Decrease font size">A−</button>
+            <span id="font-size-display" class="font-size-val">14 px</span>
+            <button type="button" id="btn-font-increase" class="btn-step" title="Increase font size">A+</button>
+          </div>
+          <div class="font-presets">
+            <button type="button" class="btn-preset" data-size="11">11px</button>
+            <button type="button" class="btn-preset" data-size="12">12px</button>
+            <button type="button" class="btn-preset" data-size="13">13px</button>
+            <button type="button" class="btn-preset" data-size="14">14px</button>
+            <button type="button" class="btn-preset" data-size="16">16px</button>
+            <button type="button" class="btn-preset" data-size="18">18px</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-section">
+        <label class="setting-label">Color Themes</label>
+        <div id="themes-grid" class="themes-grid">
+          <!-- Dynamically rendered theme cards with swatches -->
+        </div>
       </div>
 
       <div class="modal-actions">
@@ -308,7 +341,7 @@
   <!-- Scripts -->
   <script src="/static/vendor/xterm.js"></script>
   <script src="/static/vendor/xterm-addon-fit.js"></script>
-  <script src="/static/themes.js?v=5"></script>
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/themes.js?v=6"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>

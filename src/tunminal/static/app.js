@@ -16,10 +16,18 @@
   // View Mode & Theme State
   let currentViewMode = localStorage.getItem("tunminal_view_mode") || "terminal";
   let currentTheme = localStorage.getItem("tunminal_theme") || "tunminal-dark";
+  let currentFontSize = parseInt(
+    localStorage.getItem("tunminal_font_size") || (window.innerWidth < 768 ? "12" : "14"),
+    10
+  );
 
   // DOM Elements
   const statusEl = document.getElementById("connection-status");
   const latencyBadge = document.getElementById("latency-badge");
+  const btnMenuDrawer = document.getElementById("btn-menu-drawer");
+  const headerActiveSession = document.getElementById("header-active-session");
+  const sessionTitleText = document.getElementById("session-title-text");
+  const sessionStatusDot = document.getElementById("session-status-dot");
   const btnBellToggle = document.getElementById("btn-bell-toggle");
   const btnFilesModal = document.getElementById("btn-files-modal");
   const filesModal = document.getElementById("files-modal");
@@ -386,12 +394,14 @@
     const themeModalClose = document.getElementById("theme-modal-close");
     const themeModalDone = document.getElementById("theme-modal-done");
 
-    // Pre-render themes immediately
+    // Pre-render themes immediately and initialize font size controls
     renderThemesGrid();
+    setupFontSizeControls();
 
     if (btnThemeModal) {
       btnThemeModal.addEventListener("click", () => {
         renderThemesGrid();
+        updateFontSizeDisplay();
         themeModal.showModal();
       });
     }
@@ -447,11 +457,78 @@
     showToast(`Applied theme: ${themes[themeId].name}`);
   }
 
+  function setFontSize(newSize) {
+    newSize = Math.max(9, Math.min(26, newSize));
+    currentFontSize = newSize;
+    localStorage.setItem("tunminal_font_size", newSize);
+    if (term) {
+      term.options.fontSize = newSize;
+      if (fitAddon && currentViewMode === "terminal") {
+        fitAddon.fit();
+        notifyTerminalResize();
+      }
+    }
+    updateFontSizeDisplay();
+    showToast(`Font size: ${newSize}px`);
+  }
+
+  function updateFontSizeDisplay() {
+    const display = document.getElementById("font-size-display");
+    if (display) {
+      display.textContent = `${currentFontSize} px`;
+    }
+    document.querySelectorAll(".btn-preset").forEach((btn) => {
+      const sz = parseInt(btn.dataset.size, 10);
+      btn.classList.toggle("active", sz === currentFontSize);
+    });
+  }
+
+  function updateHeaderSessionTitle(session) {
+    if (!sessionTitleText) return;
+    if (session) {
+      sessionTitleText.textContent = session.name || session.command || "Terminal";
+      if (sessionStatusDot) {
+        sessionStatusDot.style.color = session.alive ? "var(--status-connected)" : "var(--status-disconnected)";
+      }
+    } else {
+      sessionTitleText.textContent = "Tunminal";
+    }
+  }
+
+  function setupFontSizeControls() {
+    const btnDec = document.getElementById("btn-font-decrease");
+    const btnInc = document.getElementById("btn-font-increase");
+    if (btnDec) {
+      btnDec.addEventListener("click", () => setFontSize(currentFontSize - 1));
+    }
+    if (btnInc) {
+      btnInc.addEventListener("click", () => setFontSize(currentFontSize + 1));
+    }
+
+    document.querySelectorAll(".btn-preset").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sz = parseInt(btn.dataset.size, 10);
+        if (sz) setFontSize(sz);
+      });
+    });
+
+    const fontDecKeypad = document.getElementById("btn-font-dec-keypad");
+    if (fontDecKeypad) {
+      fontDecKeypad.addEventListener("click", () => setFontSize(currentFontSize - 1));
+    }
+    const fontIncKeypad = document.getElementById("btn-font-inc-keypad");
+    if (fontIncKeypad) {
+      fontIncKeypad.addEventListener("click", () => setFontSize(currentFontSize + 1));
+    }
+
+    updateFontSizeDisplay();
+  }
+
   function initTerminal() {
     term = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
-      fontSize: 14,
+      fontSize: currentFontSize,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
       theme: getThemeConfig(currentTheme),
       scrollback: 5000,
@@ -1287,6 +1364,7 @@
       });
       tabsBar.appendChild(tab);
     });
+    updateHeaderSessionTitle(getActiveSession());
   }
 
   async function createNewSession(command, name, cwd = null) {
@@ -1574,6 +1652,7 @@
     });
 
     updateViewModeVisibility();
+    updateHeaderSessionTitle(getActiveSession());
     connectWebSocket(sessionId);
   }
 
@@ -2248,17 +2327,21 @@
 
   // 11. Mobile Virtual Keypad & Shortcuts
   function setupKeypad() {
-    modCtrlBtn.addEventListener("click", () => {
-      isCtrlActive = !isCtrlActive;
-      modCtrlBtn.classList.toggle("active", isCtrlActive);
-    });
+    if (modCtrlBtn) {
+      modCtrlBtn.addEventListener("click", () => {
+        isCtrlActive = !isCtrlActive;
+        modCtrlBtn.classList.toggle("active", isCtrlActive);
+      });
+    }
 
-    modAltBtn.addEventListener("click", () => {
-      isAltActive = !isAltActive;
-      modAltBtn.classList.toggle("active", isAltActive);
-    });
+    if (modAltBtn) {
+      modAltBtn.addEventListener("click", () => {
+        isAltActive = !isAltActive;
+        modAltBtn.classList.toggle("active", isAltActive);
+      });
+    }
 
-    document.querySelectorAll(".key-btn[data-key]").forEach((btn) => {
+    document.querySelectorAll(".key-pill[data-key], .key-btn[data-key]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const key = btn.getAttribute("data-key");
@@ -2266,17 +2349,18 @@
       });
     });
 
-    document.querySelectorAll(".key-btn[data-shortcut]").forEach((btn) => {
+    document.querySelectorAll(".key-pill[data-shortcut], .key-btn[data-shortcut]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const sc = btn.getAttribute("data-shortcut");
         if (sc === "ctrl-c") sendTerminalInput("\x03");
         else if (sc === "ctrl-d") sendTerminalInput("\x04");
         else if (sc === "ctrl-l") sendTerminalInput("\x0c");
+        else if (sc === "shift-tab") sendTerminalInput("\x1b[Z");
       });
     });
 
-    document.querySelectorAll(".key-btn[data-send]").forEach((btn) => {
+    document.querySelectorAll(".key-pill[data-send], .key-btn[data-send]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const char = btn.getAttribute("data-send");
@@ -2284,41 +2368,72 @@
       });
     });
 
-    document.getElementById("btn-paste").addEventListener("click", async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          sendTerminalInput(text);
+    const pasteBtn = document.getElementById("btn-paste");
+    if (pasteBtn) {
+      pasteBtn.addEventListener("click", async () => {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+              sendTerminalInput(text);
+              return;
+            }
+          } catch (err) {}
         }
-      } catch (err) {
         textInputModal.showModal();
-      }
-    });
+      });
+    }
 
-    document.getElementById("btn-input-modal").addEventListener("click", () => {
-      document.getElementById("mobile-text-content").value = "";
-      textInputModal.showModal();
-    });
+    const inputModalBtn = document.getElementById("btn-input-modal");
+    if (inputModalBtn) {
+      inputModalBtn.addEventListener("click", () => {
+        document.getElementById("mobile-text-content").value = "";
+        textInputModal.showModal();
+      });
+    }
 
-    document.getElementById("text-modal-cancel").addEventListener("click", () => {
-      textInputModal.close();
-    });
+    const textModalCancel = document.getElementById("text-modal-cancel");
+    if (textModalCancel) {
+      textModalCancel.addEventListener("click", () => {
+        textInputModal.close();
+      });
+    }
 
-    document.getElementById("text-input-form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const content = document.getElementById("mobile-text-content").value;
-      if (content) {
-        sendTerminalInput(content + "\r");
-      }
-      textInputModal.close();
-    });
+    const textInputForm = document.getElementById("text-input-form");
+    if (textInputForm) {
+      textInputForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const content = document.getElementById("mobile-text-content").value;
+        if (content) {
+          sendTerminalInput(content + "\r");
+        }
+        textInputModal.close();
+      });
+    }
 
-    document.getElementById("btn-toggle-keypad").addEventListener("click", () => {
-      mobileKeypad.classList.toggle("hidden");
-      if (currentViewMode === "terminal" && fitAddon) {
-        setTimeout(() => fitAddon.fit(), 100);
-      }
-    });
+    const toggleKeypadBtn = document.getElementById("btn-toggle-keypad");
+    if (toggleKeypadBtn) {
+      toggleKeypadBtn.addEventListener("click", () => {
+        mobileKeypad.classList.toggle("hidden");
+        if (currentViewMode === "terminal" && fitAddon) {
+          setTimeout(() => fitAddon.fit(), 100);
+        }
+      });
+    }
+
+    // Mobile Drawer & Sessions Click Handlers
+    if (btnMenuDrawer) {
+      btnMenuDrawer.addEventListener("click", async () => {
+        await refreshSessions();
+        if (sessionsModal) sessionsModal.showModal();
+      });
+    }
+    if (headerActiveSession) {
+      headerActiveSession.addEventListener("click", async () => {
+        await refreshSessions();
+        if (sessionsModal) sessionsModal.showModal();
+      });
+    }
 
     document.getElementById("btn-new-tab").addEventListener("click", () => {
       newSessionModal.showModal();
