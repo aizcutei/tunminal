@@ -282,6 +282,7 @@ class CloudflareTunnel:
         self.tunnel_url: Optional[str] = None
         self._proc: Optional[subprocess.Popen] = None
         self._url_event = threading.Event()
+        self._connected_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
         self._stopped = False
 
@@ -299,12 +300,12 @@ class CloudflareTunnel:
             cmd = [
                 self.cloudflared_bin,
                 "tunnel",
-                "--protocol",
-                self.protocol,
                 "--no-autoupdate",
                 "run",
                 "--token",
                 self.tunnel_token,
+                "--protocol",
+                self.protocol,
             ]
         else:
             cmd = [
@@ -340,15 +341,12 @@ class CloudflareTunnel:
 
         # In Token mode, the tunnel doesn't print a trycloudflare.com URL
         if self.tunnel_token:
-            # Wait briefly to ensure the process started without immediately crashing
-            import time
-            time.sleep(1.0)
-            if self._proc.poll() is None:
-                logger.info("Cloudflare Named Tunnel started successfully with token.")
-                return "named_tunnel_active"
-            else:
-                logger.error("Cloudflare Named Tunnel exited immediately with code %s", self._proc.poll())
+            # Wait briefly to observe connection registration or process exit
+            self._connected_event.wait(timeout=8.0)
+            if self._proc.poll() is not None:
+                logger.error("Cloudflare Named Tunnel exited with code %s", self._proc.poll())
                 return None
+            return "named_tunnel_active"
 
         # Wait for URL to appear in Quick Tunnel mode
         ready = self._url_event.wait(timeout=timeout)
@@ -371,14 +369,28 @@ class CloudflareTunnel:
                 if match and not self.tunnel_url:
                     self.tunnel_url = match.group(0)
                     self._url_event.set()
-                if "ERR" in line or "error" in line.lower():
-                    logger.debug("cloudflared log: %s", line.strip())
+
+                line_lower = line.lower()
+                # Check for successful registration with Cloudflare edge
+                if "registered" in line_lower and ("conn" in line_lower or "connection" in line_lower or "location" in line_lower):
+                    print(f"\033[1;32m[*] Cloudflare edge connector registered successfully.\033[0m", flush=True)
+                    self._connected_event.set()
+                elif "registered connindex" in line_lower:
+                    self._connected_event.set()
+
+                # Print fatal errors to console so user can diagnose configuration issues
+                if "err" in line_lower or "error" in line_lower or "failed" in line_lower:
+                    if "no error" not in line_lower:
+                        print(f"\033[1;31m[cloudflared] {line.strip()}\033[0m", flush=True)
+                        logger.warning("cloudflared log: %s", line.strip())
         except Exception as e:
             logger.warning("Error reading cloudflared output: %s", e)
         finally:
             self._url_event.set()
+            self._connected_event.set()
             if not self._stopped and self._proc and self._proc.poll() is not None:
                 code = self._proc.poll()
+                print(f"\033[1;31m[!] Cloudflare process exited unexpectedly (code {code}).\033[0m", flush=True)
                 logger.warning("cloudflared process terminated with return code %s", code)
 
     def stop(self) -> None:
