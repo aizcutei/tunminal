@@ -556,15 +556,25 @@
     updateFontSizeDisplay();
   }
 
+  let termResizeObserver = null;
+  let termResizeTimer = null;
+
   function initTerminal() {
+    const isWindowsClient =
+      navigator.platform.indexOf("Win") !== -1 ||
+      navigator.userAgent.indexOf("Windows") !== -1;
+
     term = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
       fontSize: currentFontSize,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+      fontFamily:
+        "'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, 'Liberation Mono', 'Microsoft YaHei', monospace",
       theme: getThemeConfig(currentTheme),
       scrollback: 5000,
       allowTransparency: false,
+      scrollOnUserInput: true,
+      windowsMode: isWindowsClient,
     });
 
     fitAddon = new FitAddon.FitAddon();
@@ -598,6 +608,22 @@
     term.onBell(() => {
       playBellSound();
     });
+
+    // ResizeObserver for reliable container resizing across drawer toggles, font changes, and window resizing
+    if (window.ResizeObserver && termContainer) {
+      termResizeObserver = new ResizeObserver(() => {
+        if (currentViewMode === "terminal" && fitAddon && term) {
+          if (termResizeTimer) clearTimeout(termResizeTimer);
+          termResizeTimer = setTimeout(() => {
+            try {
+              fitAddon.fit();
+              notifyTerminalResize();
+            } catch (e) {}
+          }, 35);
+        }
+      });
+      termResizeObserver.observe(termContainer);
+    }
 
     window.addEventListener("resize", () => {
       if (currentViewMode === "terminal" && fitAddon) {
@@ -692,6 +718,7 @@
       if (fitAddon) {
         setTimeout(() => {
           fitAddon.fit();
+          notifyTerminalResize();
           term.focus();
         }, 50);
       }
@@ -745,6 +772,9 @@
 
   function sendTerminalInput(data) {
     if (!data) return;
+    if (term) {
+      try { term.scrollToBottom(); } catch (e) {}
+    }
     if (typeof data === "string" && data.includes(";rgb:")) {
       data = data.replace(/(?:\x1B\]|\])(?:10|11|12|4);rgb:[0-9a-fA-F/]+(?:\x1B\\|\x07|\\)?/g, "");
       if (!data) return;
@@ -1452,6 +1482,9 @@
           codexBtn.title = "codex CLI not detected in PATH, but can still run if installed in environment";
         }
       }
+      if (info.platform === "win32" && term) {
+        term.options.windowsMode = true;
+      }
     } catch (e) {
       console.warn("Failed to fetch info:", e);
     }
@@ -1619,7 +1652,7 @@
       if (term) {
         term.write(merged);
       }
-      const textChunk = utf8Decoder.decode(merged);
+      const textChunk = utf8Decoder.decode(merged, { stream: true });
       if (textChunk) {
         checkOscNotifications(textChunk);
         const session = getActiveSession();
@@ -1837,7 +1870,9 @@
     updateConnectionStatus("status-badge connecting", "Connecting...");
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}?token=${encodeURIComponent(token)}`;
+    const colsParam = term ? term.cols : 120;
+    const rowsParam = term ? term.rows : 30;
+    const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}?token=${encodeURIComponent(token)}&cols=${colsParam}&rows=${rowsParam}`;
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";

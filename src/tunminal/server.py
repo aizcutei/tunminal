@@ -38,8 +38,8 @@ class CreateSessionRequest(BaseModel):
     command: Optional[Union[str, List[str]]] = None
     name: Optional[str] = None
     cwd: Optional[str] = None
-    cols: int = 80
-    rows: int = 24
+    cols: int = 120
+    rows: int = 30
 
 
 class UpdateSessionRequest(BaseModel):
@@ -254,6 +254,17 @@ def create_app(
             await websocket.close(code=4401, reason="Unauthorized: invalid token")
             return
 
+        cols_param = websocket.query_params.get("cols")
+        rows_param = websocket.query_params.get("rows")
+        init_cols = 120
+        init_rows = 30
+        if cols_param and rows_param:
+            try:
+                init_cols = int(cols_param)
+                init_rows = int(rows_param)
+            except (ValueError, TypeError):
+                pass
+
         session = session_manager.get_session(session_id)
         if not session:
             # If default initial session doesn't exist yet, auto-create it
@@ -261,10 +272,15 @@ def create_app(
                 session = session_manager.create_session(
                     name=default_cmd or "Default",
                     command=default_cmd,
+                    cols=init_cols,
+                    rows=init_rows,
                 )
             else:
                 await websocket.close(code=4404, reason="Session not found")
                 return
+        elif cols_param and rows_param:
+            # Pre-resize session before replay/attach so output buffer matches client grid
+            session.resize(init_cols, init_rows)
 
         await websocket.accept()
         await session.attach_client(websocket)

@@ -31,8 +31,8 @@ class TerminalSession:
         name: str,
         command: Optional[str] = None,
         cwd: Optional[str] = None,
-        cols: int = 80,
-        rows: int = 24,
+        cols: int = 120,
+        rows: int = 30,
     ):
         self.session_id = session_id
         self.name = name
@@ -156,8 +156,12 @@ class TerminalSession:
 
     def resize(self, cols: int, rows: int) -> None:
         """Update terminal dimensions."""
-        self.cols = max(1, cols)
-        self.rows = max(1, rows)
+        cols = max(1, cols)
+        rows = max(1, rows)
+        if self.cols == cols and self.rows == rows and self._pty and self.is_alive():
+            return
+        self.cols = cols
+        self.rows = rows
         if self._pty:
             self._pty.resize(self.cols, self.rows)
 
@@ -212,8 +216,8 @@ class SessionManager:
         name: Optional[str] = None,
         command: Optional[str] = None,
         cwd: Optional[str] = None,
-        cols: int = 80,
-        rows: int = 24,
+        cols: int = 120,
+        rows: int = 30,
     ) -> TerminalSession:
         session_id = str(uuid.uuid4())[:8]
         if not name:

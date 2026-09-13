@@ -1,6 +1,6 @@
 """Tunminal - Cross-platform web terminal server for remote access to AI coding CLI tools."""
 
-__version__ = "0.1.14"
+__version__ = "0.1.15"
 
 
 def main():

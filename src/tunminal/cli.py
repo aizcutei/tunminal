@@ -141,9 +141,13 @@ def main():
     # Pre-create initial session if requested or default
     initial_cmd = args.cmd
     session_name = "Initial Session"
-    if initial_cmd:
-        session_name = initial_cmd.split()[0]
-    session_mgr.create_session(name=session_name, command=initial_cmd)
+    session_mgr.create_session(
+        name=session_name,
+        command=initial_cmd,
+        cwd=args.cwd,
+        cols=120,
+        rows=30,
+    )
 
     # 3. Create FastAPI app
     app = create_app(auth_manager=auth, session_manager=session_mgr, default_cmd=initial_cmd)

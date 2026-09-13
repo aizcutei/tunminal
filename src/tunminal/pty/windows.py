@@ -1,10 +1,13 @@
 import asyncio
 import collections
+import logging
 import os
 import threading
 from typing import List, Optional, Union
 
 from tunminal.pty.base import BasePty
+
+logger = logging.getLogger("tunminal.pty.windows")
 
 try:
     from winpty import PtyProcess
@@ -84,13 +87,22 @@ class WindowsPty(BasePty):
             pass
 
     def resize(self, cols: int, rows: int) -> None:
-        self._cols = max(1, cols)
-        self._rows = max(1, rows)
+        cols = max(1, cols)
+        rows = max(1, rows)
+        if self._cols == cols and self._rows == rows:
+            return
+        self._cols = cols
+        self._rows = rows
         if self._proc and self.is_alive():
             try:
-                self._proc.set_winsize(self._rows, self._cols)
-            except Exception:
-                pass
+                if hasattr(self._proc, "setwinsize"):
+                    self._proc.setwinsize(self._rows, self._cols)
+                elif hasattr(self._proc, "set_winsize"):
+                    self._proc.set_winsize(self._rows, self._cols)
+                elif hasattr(self._proc, "pty") and hasattr(self._proc.pty, "set_size"):
+                    self._proc.pty.set_size(self._cols, self._rows)
+            except Exception as e:
+                logger.warning("Failed to resize Windows PTY: %s", e)
 
     async def read(self) -> bytes:
         while not self._closed:

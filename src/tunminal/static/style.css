@@ -25,7 +25,7 @@
   --terminal-shortcut-fg: #d0d0d0;
   --terminal-shortcut-bg: rgba(255, 255, 255, 0.06);
   --terminal-shortcut-border: rgba(255, 255, 255, 0.12);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, 'Liberation Mono', 'Microsoft YaHei', monospace;
 }
 
 
@@ -696,15 +696,22 @@ html, body {
 #terminal-container {
   flex: 1;
   width: 100%;
+  height: 100%;
   background-color: #000;
   overflow: hidden;
   position: relative;
-  padding: 4px;
+  padding: 0;
 }
 
 .xterm {
   height: 100%;
   width: 100%;
+  padding: 0;
+}
+
+.xterm .xterm-viewport {
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 /* Mobile Virtual Keypad (vibe-term pill style) */
